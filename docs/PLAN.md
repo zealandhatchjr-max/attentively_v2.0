@@ -55,12 +55,64 @@ Ringer orchestrator: call 1 → extract → brief v2 → call 2 → ... (sequent
 User answers (in ChatGPT, on the widget, or on the Kolaboreyt board) → brief v3 → run resumes
   │
   ▼
-Run complete → email → user opens chat → model calls get_run → RESULTS CARD
-  Best overall / cheapest valid / fastest, with evidence links per claim
+Run complete → REPORT emailed (+ Kolaboreyt board) → user opens chat → get_run → RESULTS CARD
+  Best overall / cheapest valid / fastest, evidence per claim, and a RECOMMENDED NEXT STEP
+  ("Call Tyrepower on 07 … and mention quote #R-1042, valid until Friday")
   │
   ▼
-"Book the Friday 2pm slot at Beaurepaires Robina" → request_action → separate approval
+Optional: "Beaurepaires might match $580, want me to call them back?" → user approves round 2
+  │
+  ▼
+Vendor calls the user's assistant number later → inbound AI recognises them → notes added
+  → updated report emailed, until the user presses [Resolved]
 ```
+
+---
+
+## 1.1 Product decisions (from founder Q&A, 2026-09-24)
+
+These override the PRD where they conflict.
+
+**Identity: every user gets their own assistant number**
+- Each subscriber gets a **dedicated Twilio number** that works like a celebrity's assistant line. The user's real number is **never** given to vendors.
+- Vendors hear: "I'm an AI assistant calling on behalf of a customer." If asked for a name or number, the AI gives the assistant number: "You can reach me on this number."
+- Ringer is **gathering information only**. The MVP makes no bookings, holds or payments.
+
+**Inbound: the assistant number is always answered by the AI**
+- Every inbound call to a user's number goes to the voice agent.
+- On ring, the agent looks up the caller's number against Ringer's database: which vendor is this, and which runs and calls have we had with them for this user? It then loads the previous call's notes and transcript summary into its context ("Hi, thanks for calling back about the 205/55R16 tyres…").
+- Unknown callers get a polite receptionist flow: take a message, attach it to the user's account, and email the user.
+- Everything a callback captures lands on the run's Kolaboreyt board as a new call record with the same evidence rules as outbound calls.
+
+**Negotiation**
+- On each call, the AI **first gets the vendor's own price without mentioning any competitor**.
+- After that, it may share a **real** competing quote from this run, **naming the competitor and the price** ("Tyrepower Varsity Lakes quoted $620 fitted for the same tyre, can you do better?").
+- Only quotes actually collected, with evidence, can be used. The AI never bluffs or rounds a quote in its favour. The board records the price before and after negotiation as separate observations.
+- **Second round:** earlier vendors never heard the later, lower quotes. So the report can suggest going back ("Beaurepaires might match $580, want me to call them back?"). The call-back round only happens after the **user approves** it.
+
+**Report and next step**
+- When the run finishes, Ringer emails a **report** (and updates the Kolaboreyt board) with what it found, the ranking, the evidence and a **recommended next step**. The user acts on it themselves.
+
+**Timing**
+- Requests outside business hours are **queued**. The user approves the plan now, and each call is placed when that shop opens. The report arrives later, with the expected time shown on the Plan card.
+
+**Late information and "Resolved"**
+- A vendor callback after the report has gone out **always triggers an updated report email**.
+- Every run has a **Resolved** button (in the email, on the Kolaboreyt board and in the ChatGPT widget). Once resolved, the run gets no more emails or rounds, and late callbacks are logged quietly. The inbound AI tells the vendor the customer has sorted it, thanks them, and takes no further details.
+
+**Billing: subscription with included minutes** (paid plans arrive in Phase 4. The team pilot is free.)
+- **All call time counts**, including ringing, hold time, voicemail and inbound callbacks.
+- **Running out mid-run:** the run pauses before the next call and emails the user "Out of minutes: top up, or get the report with what we have?"
+- The Plan card shows the estimated minutes against the user's remaining balance.
+
+**Sign-up**
+- First use in ChatGPT shows **"Connect Ringer"**. Sign-up, subscription and assistant-number setup happen **on Ringer's own site** (OAuth account link). Ringer owns the customer and billing relationship.
+
+**Voice**
+- **Neutral and professional**, like a polite receptionist. It always opens with the AI disclosure.
+
+**First user**
+- **The founding team** runs real inquiries for themselves first.
 
 ---
 
@@ -141,7 +193,9 @@ What this means for the build:
         │  Extraction/checkpoint LLM                           │
         │  Approval + audit log (append-only)                  │
         │  Notification service (email)                        │
-        │  Board sync (existing board tool, best-effort)       │
+        │  Inbound assistant (per-user numbers, caller lookup) │
+        │  Minutes ledger (all call time, per subscriber)      │
+        │  Board sync (Kolaboreyt, best-effort)                │
         └────────────┬─────────────────────────────────────────┘
           Telephony interface │ Voice-agent interface │ Places interface
              (Twilio)         │ (ElevenLabs)          │ (Google Places)
@@ -182,7 +236,8 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 | `start_run` | dials | required + **approval token** | Starts the orchestrator for an approved `plan_version`. Fails if the token is missing, stale or already used. |
 | `get_run` | none | required | Full state: vendor items, observations with evidence, open checkpoints, current recommendation inputs. Renders the **Board** or **Results** widget. |
 | `answer_checkpoint` | new brief version | required | Records the user's answer and resumes the run. A material scope change (budget, cap, identity disclosure) returns `needs_reapproval` instead. |
-| `request_action` | prepares an action | required | Booking call, callback, calendar, CSV/PDF export, rerun unanswered. Booking and callback need their own approval token. |
+| `request_action` | prepares an action | required | Round-2 negotiation call-backs, re-run unanswered vendors, CSV/PDF export. Any action that places calls needs its own approval token. (Bookings and holds are out of MVP scope.) |
+| `resolve_run` | stops follow-ups | required | Marks the run Resolved: no more emails or rounds, and late callbacks are logged quietly. |
 | `list_runs` | none | required | History. |
 | `stop_run` | stops | required | Immediate stop. Always available, no token needed. |
 
@@ -200,9 +255,10 @@ Replaced from the PRD: `place_call`, `get_call`, `wait_for_call` and `save_resul
 | Calls in progress | Board widget (live-polls Ringer). The user can leave. |
 | **Needs you** | Email containing the exact question + a link to the run's **Kolaboreyt board**. The answer can come from the board, the widget, or by telling ChatGPT. |
 | Done | Email + Kolaboreyt board link. Back in ChatGPT, "how did it go?" → `get_run` → Results card. |
-| Vendor callback | The vendor calls the Ringer number back. The inbound agent looks up the run by caller ID and handles it. (Reuses the existing inbound Twilio/ElevenLabs stack.) |
+| Vendor callback | The vendor calls the user's **dedicated assistant number**. The inbound agent looks up the caller in the database, loads the earlier call's notes and continues the conversation. New info goes on the board and an updated report is emailed, unless the run is Resolved. (Reuses the existing inbound Twilio/ElevenLabs stack.) |
+| Out of minutes | Run pauses before the next call. Email: top up, or get the report now. |
 
-The **Kolaboreyt board** does the job of the standalone run page. Users can follow and answer a run there without ChatGPT, which is also the hedge against marketplace risk. (This assumes Kolaboreyt is the existing board tool from the PRD. See §9.)
+The **Kolaboreyt board** does the job of the standalone run page. Users can follow and answer a run there without ChatGPT, which is also the hedge against marketplace risk. Kolaboreyt is the team's existing monday.com-style board tool, built by a friend of the team. API access and integration instructions are still to come (§9).
 
 The user confirms their email for notifications on the Plan card, before approving.
 
@@ -215,13 +271,16 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 ### Phase 0: Audit and spikes (1–2 weeks)
 - Audit the existing inbound Twilio + ElevenLabs code: can it do **outbound** with a **per-call prompt override** and a **structured data-collection schema**? Record reuse, modify or rebuild for each component.
 - Spike a ChatGPT dev-mode app: a hello-world MCP tool, a widget, OAuth account linking, and a widget → backend call (to validate the approval-token flow in §4).
-- Spike the existing board-tool API: create board, adaptive columns, item updates.
+- Spike the Kolaboreyt API (once the key and instructions arrive): create a board per run, adaptive columns, item updates, per-run links for emails, and a Resolved status or button that can reach Ringer (webhook or polling).
+- Spike per-user numbers: buy and configure a Twilio number by API, route its inbound calls to the voice agent, and look up the caller before the agent speaks (ElevenLabs conversation-initiation webhook or equivalent).
 - Legal: Queensland recording position, AI-disclosure script, whether B2B inquiry calls fall outside telemarketing/DNC rules, and OpenAI app policy fit (see R1).
 - **Exit:** signed ADR, one outbound test call to a team phone with an overridden prompt and structured extraction, one widget rendering in ChatGPT dev mode.
 
 ### Phase 1: Core and first real run (3–4 weeks)
 - Postgres schema (Run, PlanVersion, Approval, BriefVersion, Vendor, Call, Observation, Checkpoint, AuditEvent).
-- Orchestrator: sequential loop, business-hours gate, cap, idempotent dial, extraction, brief versioning, *Needs you* pause/resume.
+- Orchestrator: sequential loop, business-hours gate with queue-until-open, cap, idempotent dial, extraction, brief versioning, *Needs you* pause/resume, and a negotiation step (own price first, then real competing quotes).
+- Inbound assistant: each team member's dedicated number, caller lookup, context load, callback records on the board.
+- Minutes ledger (all call time) and pause-when-empty, even while the pilot is free, so metering is proven before billing.
 - Category registry with **one category: tyres** (answer schema, ranking rules, call script template).
 - MCP server with the §4 tools. Test it first through **MCP Inspector and Claude Code** as the developer harness (no UI dependency).
 - Invocation eval set v1 (§2.3).
@@ -237,12 +296,13 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 
 ### Phase 3: Private pilot (3–4 weeks)
 - Invited testers on managed company keys, no charging. Human review of recommendations before they're shown, if §9 decides that.
-- Booking and callback actions with separate approval.
+- Round-2 negotiation call-backs with separate approval. Resolved button everywhere.
 - Instrumentation: cost per usable quote, vendor answer and decline rates, time-to-recommendation.
 - **Exit:** testers complete runs without developer intervention, and usefulness is ≥4/5.
 
 ### Phase 4: Public listing and billing
-- App directory submission (privacy policy, safety review, tool annotations accurate), Stripe on the Ringer account, allowances, support tooling, formal legal sign-off, retention and deletion controls.
+- Ringer sign-up site: subscription plans with included minutes (Stripe), top-ups, automatic assistant-number setup.
+- App directory submission (privacy policy, safety review, tool annotations accurate), support tooling, formal legal sign-off, retention and deletion controls.
 
 ### Phase 5: Cross-host and next verticals
 - Grok and Claude connectors on the same MCP server (mostly config plus widget fallbacks to text/markdown).
@@ -258,7 +318,8 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 /apps
   /mcp-server        MCP tools, host adapters (chatgpt/, claude/, grok/)
   /widgets           React widgets: plan-card, board, needs-you, results
-  /run-page          minimal standalone web view
+  /inbound-agent     assistant-number call handling + caller lookup
+  /account-site      sign-up, subscription, number setup (Phase 4)
 /packages
   /core              run/plan/brief/approval domain + state machines
   /orchestrator      durable workflow, call loop, checkpoint logic
@@ -283,6 +344,9 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 | R4 | The model fabricates or garbles vendor phone numbers | Ringer re-resolves every vendor server-side before planning (§3). |
 | R5 | The model asserts approval without the user | Approval token only from a UI event (§4). An audit test in CI tries `start_run` without a token. |
 | R6 | ChatGPT platform or policy change | Core is host-independent. Claude/Grok adapters and the Kolaboreyt board are the fallback distribution. |
+| R8 | Negotiation misstates a competitor's quote (legal and trust risk) | The AI may only cite observations from this run, passed to it as exact structured values with source. A transcript check after each call flags any cited figure that doesn't match. |
+| R9 | Per-user numbers get flagged as spam, or cost grows with inactive users | Register the business caller ID (CNAM/branded calling where available). Release numbers after long inactivity, with notice. Watch answer rates per number. |
+| R10 | Dedicated-number callbacks mix up two runs with the same vendor | Lookup returns every open run with that vendor. The agent asks which item the call is about when there is more than one. |
 | R7 | Tyre spec misread from the photo | The spec is always echoed on the Plan card for confirmation. Load/speed index is a required confirmed field. |
 
 The PRD's other risks (vendor rejection, extraction errors, recording law, cost) stand as written.
@@ -296,21 +360,24 @@ The PRD's other risks (vendor rejection, extraction errors, recording law, cost)
 - ✅ **Number of calls:** the user chooses for each run. The AI lists every vendor it found, recommends the ones it would definitely call (with phone numbers and reasons), and asks how many to call (§2.4). A config safety ceiling still applies.
 - ✅ **Notifications:** email, linking to the run's Kolaboreyt board.
 - ✅ **Categories:** not restricted by product choice. Tyres, guns and tools were examples. Exclusions come only from host policy (R1).
+- ✅ Assistant number per user, AI answers all inbound, negotiation rules, report plus next step, queue-until-open, Resolved button, minutes billing, sign-up on Ringer's site, voice, first user: see §1.1.
+- ✅ **Kolaboreyt** is the team's existing monday.com-style board tool.
 
 **Still open**
-1. **Confirm Kolaboreyt is the existing board tool** from the PRD, and that each run can get a shareable or authenticated board link to put in emails.
+1. **Kolaboreyt API:** waiting on the key and integration instructions. Put the key in `KOLABOREYT_API_KEY` as an environment secret, not in chat or the repo. Check: per-run board links, custom columns, and Resolved status sync.
 2. **Approval mechanism:** widget-issued token (preferred) or host write-confirmation. Phase 0 spike decides.
 3. **Orchestrator tech:** Temporal vs Inngest vs a Postgres queue.
 4. **Vendor discovery source:** Google Places vs an alternative, and its licensing for storing vendor data in vendor memory.
 5. **Email provider** (e.g. Postmark, SES, Resend).
 6. **Safety ceiling value** for calls per run (config, e.g. 10–15).
-7. The remaining PRD §21 decisions (recording, disclosure defaults, pilot pricing, retention, human review).
+7. **Plan pricing:** minutes per tier, price, top-up price, and whether the assistant number is included.
+8. The remaining PRD §21 decisions (recording, retention, human review).
 
 ---
 
 ## 10. Next concrete steps (this week)
 
-1. Answer the open §9 decisions, starting with Kolaboreyt.
+1. Get the Kolaboreyt API key and instructions (key goes into env secrets).
 2. Give engineering access to the existing inbound Twilio/ElevenLabs code and the board-tool API docs.
 3. Start the Phase 0 spikes in parallel: outbound call with prompt override, ChatGPT dev-mode widget + OAuth, board API.
 4. Draft the invocation eval prompts. Anyone on the team can write these, and it's the fastest way to sharpen *when* Ringer should appear.
