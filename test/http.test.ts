@@ -44,9 +44,10 @@ describe("MCP endpoint", () => {
     const out = await mcp(base, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     const names = out.result.tools.map((t: any) => t.name);
     expect(names).toEqual(
-      expect.arrayContaining(["check_local_inquiry", "find_vendors", "plan_run", "get_run", "answer_checkpoint", "request_action", "resolve_run", "stop_run"]),
+      expect.arrayContaining(["check_local_inquiry", "verify_vendors", "plan_run", "get_run", "answer_checkpoint", "request_action", "resolve_run", "stop_run"]),
     );
     expect(names).not.toContain("approve_run");
+    expect(names).not.toContain("find_vendors"); // Ringer never searches; the user's assistant does
     const check = out.result.tools.find((t: any) => t.name === "check_local_inquiry");
     expect(check.annotations.readOnlyHint).toBe(true);
     expect(check.description).toMatch(/BEFORE telling the user to "call around"/);
@@ -66,18 +67,18 @@ describe("MCP endpoint", () => {
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
-      params: { name: "find_vendors", arguments: { category: "tyres", search_query: "tyres", location: { text: "Robina", confirmed: true } } },
+      params: { name: "verify_vendors", arguments: { category: "tyres", location: { text: "Robina", confirmed: true }, candidates: [{ name: "Robina Tyre & Auto" }] } },
     });
     expect(find.result.isError).toBe(true);
     expect(find.result.content[0].text).toMatch(/Connect Ringer/);
   });
 
-  it("find_vendors refuses an unconfirmed location", async () => {
+  it("verify_vendors refuses an unconfirmed location", async () => {
     const { base, ctx } = await start();
     const { apiToken } = await onboardUser(ctx, { email: "a@example.com" });
     const out = await mcp(
       base,
-      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "find_vendors", arguments: { category: "tyres", search_query: "tyres", location: { text: "home", confirmed: false } } } },
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "verify_vendors", arguments: { category: "tyres", location: { text: "home", confirmed: false }, candidates: [{ name: "Robina Tyre & Auto" }] } } },
       apiToken,
     );
     expect(out.result.isError).toBe(true);

@@ -59,6 +59,9 @@ const EnvSchema = z.object({
     .default(
       "gold coast,southport,surfers paradise,broadbeach,robina,varsity lakes,burleigh,nerang,helensvale,coomera,palm beach,mudgeeraba,labrador,ashmore,bundall,miami,tugun,coolangatta,upper coomera,oxenford",
     ),
+  // Google Places verification: re-check a vendor if its last check is older than this.
+  VERIFY_MAX_AGE_DAYS: z.coerce.number().int().positive().default(14),
+  PLACES_LOOKUPS_PER_USER_PER_DAY: z.coerce.number().int().positive().default(40),
   WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   CALL_POLL_SECONDS: z.coerce.number().int().positive().default(15),
 });

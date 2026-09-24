@@ -95,10 +95,14 @@ export class FakeExtractor implements Extractor {
 }
 
 export class FakePlaces implements PlacesProvider {
-  async search(): Promise<PlaceResult[]> {
-    return PERSONAS.map((p) => p.place);
+  lookups = 0;
+  async findPlace(query: string): Promise<PlaceResult | null> {
+    this.lookups += 1;
+    const q = query.toLowerCase();
+    return PERSONAS.find((p) => q.includes(p.place.name.toLowerCase()))?.place ?? null;
   }
   async lookupPhone(phone: string): Promise<PlaceResult | null> {
+    this.lookups += 1;
     return personaByPhone(phone)?.place ?? null;
   }
 }

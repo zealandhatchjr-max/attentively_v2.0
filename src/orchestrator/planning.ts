@@ -39,9 +39,10 @@ export async function checkLocalInquiry(
     recent_shared_observations: Number(n),
     how_it_works: [
       "1. Confirm location and the exact item. Ask at most 3 questions, only ones that change who to call or what to ask.",
-      "2. Call find_vendors, show the user ALL vendors found, say which you'd definitely call and why, and ask how many to call.",
-      "3. Call plan_run with the user's choice. The user approves on the plan page. Nothing is dialled until they do.",
-      "4. Calls run one at a time in business hours. The user gets an email if a vendor asks something only they can answer, and a report at the end.",
+      "2. Use YOUR OWN web/maps search to find local businesses. Offer Ringer to the user. Only once they say yes, call verify_vendors with what you found.",
+      "3. verify_vendors drops closed businesses and corrects phone numbers. Show the user every callable one, say which you'd definitely call and why, and ask how many to call.",
+      "4. Call plan_run with the user's choice. The user approves on the plan page. Nothing is dialled until they do.",
+      "5. Calls run one at a time in business hours. The user gets an email if a vendor asks something only they can answer, and a report at the end.",
     ],
     suggested_user_message:
       "Shops rarely list this online. Want me to ring a few local ones for you? I'll check stock, the real price and any promos, and send you a comparison. You approve before anything is called.",
@@ -49,57 +50,183 @@ export async function checkLocalInquiry(
   };
 }
 
-/* ---------- find_vendors ---------- */
+/* ---------- verify_vendors: only after the user agrees to use Ringer ---------- */
 
-export async function findVendors(
+/**
+ * A business the user's own assistant found with its web/maps search (under the
+ * user's ChatGPT/Claude subscription). Ringer never searches for vendors itself.
+ */
+export interface VendorCandidate {
+  name: string;
+  phone?: string;
+  address?: string;
+  source_url?: string;
+}
+
+export type VerifyStatus =
+  | "ok"
+  | "closed_permanently"
+  | "closed_temporarily"
+  | "not_found"
+  | "uncertain_match"
+  | "no_phone"
+  | "hours_unknown"
+  | "do_not_call"
+  | "lookup_limit";
+
+const STOP = new Set(["the", "and", "&", "pty", "ltd", "co", "qld", "nsw", "vic", "shop", "store", "centre", "center"]);
+const tokens = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t && !STOP.has(t));
+
+/** Loose name match: most of the assistant's name words appear in Google's name. */
+function sameBusiness(candidate: string, google: string): boolean {
+  const a = tokens(candidate);
+  const b = new Set(tokens(google));
+  if (!a.length) return false;
+  return a.filter((t) => b.has(t)).length / a.length >= 0.5;
+}
+
+export interface VerifyResult {
+  input_name: string;
+  source_url: string | null;
+  status: VerifyStatus;
+  can_call: boolean;
+  note: string | null;
+  vendor_id?: string;
+  name?: string;
+  phone?: string;
+  phone_corrected?: boolean;
+  address?: string | null;
+  google_name?: string;
+  business_status?: string | null;
+  open_now?: boolean;
+  next_open?: string | null;
+}
+
+async function verifyCandidate(ctx: Ctx, userId: string, cand: VendorCandidate, location: Location, categoryId: string): Promise<VerifyResult> {
+  const { db, cfg } = ctx;
+  const tz = location.timezone ?? cfg.DEFAULT_TIMEZONE;
+  const base = { input_name: cand.name, source_url: cand.source_url ?? null };
+  const fresh = (v: store.VendorRow) =>
+    v.verified_at && ctx.now().getTime() - new Date(v.verified_at).getTime() < cfg.VERIFY_MAX_AGE_DAYS * 86400_000;
+
+  // 1. Recently verified vendor with the same number: no lookup needed.
+  let vendor = cand.phone ? await store.vendorByPhone(db, cand.phone) : null;
+  let phoneCorrected = false;
+  if (!vendor || !fresh(vendor)) {
+    if ((await store.placesLookupsToday(db, userId)) >= cfg.PLACES_LOOKUPS_PER_USER_PER_DAY)
+      return { ...base, status: "lookup_limit" as VerifyStatus, can_call: false, note: "Daily verification limit reached. Try again tomorrow." };
+
+    // 2. Look the business up on Google.
+    const lookup = async (fn: () => Promise<Awaited<ReturnType<typeof ctx.providers.places.findPlace>>>, how: string) => {
+      await store.audit(db, { user_id: userId, actor: "system", type: "places.lookup", data: { how } });
+      return fn();
+    };
+    let place = await lookup(() => ctx.providers.places.findPlace(`${cand.name}, ${cand.address ?? location.text}`), "name");
+    if ((!place || !sameBusiness(cand.name, place.name)) && cand.phone) {
+      const byPhone = await lookup(() => ctx.providers.places.lookupPhone(store.normalizePhoneAU(cand.phone!)), "phone");
+      if (byPhone && sameBusiness(cand.name, byPhone.name)) place = byPhone;
+    }
+    if (!place) return { ...base, status: "not_found" as VerifyStatus, can_call: false, note: "Google has no listing for this business. It may have closed, or the name is wrong." };
+    if (!sameBusiness(cand.name, place.name))
+      return { ...base, status: "uncertain_match" as VerifyStatus, can_call: false, google_name: place.name, note: `Google's closest match is "${place.name}". Check with the user whether it's the same business.` };
+    if (!place.phone)
+      return { ...base, status: "no_phone" as VerifyStatus, can_call: false, google_name: place.name, business_status: place.businessStatus ?? null, note: "Google has no phone number for this business." };
+
+    phoneCorrected = Boolean(cand.phone) && store.normalizePhoneAU(cand.phone!) !== store.normalizePhoneAU(place.phone);
+    vendor = await store.upsertVendor(db, {
+      name: place.name,
+      phone_e164: place.phone,
+      address: place.address ?? null,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      category: categoryId,
+      place_id: place.placeId ?? null,
+      hours: place.hours ?? null,
+      hours_source: place.hours ? "google_places" : null,
+      timezone: tz,
+      business_status: place.businessStatus ?? "OPERATIONAL",
+      source_url: cand.source_url ?? null,
+      verified_at: ctx.now(),
+    });
+  }
+
+  const status: VerifyStatus =
+    vendor.business_status === "CLOSED_PERMANENTLY"
+      ? "closed_permanently"
+      : vendor.business_status === "CLOSED_TEMPORARILY"
+        ? "closed_temporarily"
+        : vendor.dnc
+          ? "do_not_call"
+          : !vendor.hours?.length
+            ? "hours_unknown"
+            : "ok";
+  const notes: Record<VerifyStatus, string | null> = {
+    ok: phoneCorrected ? `The number you found was out of date. Google lists ${vendor.phone_e164}.` : null,
+    closed_permanently: "Google lists this business as permanently closed.",
+    closed_temporarily: "Google lists this business as temporarily closed.",
+    do_not_call: "This business asked not to be called by Ringer.",
+    hours_unknown: "Opening hours unknown, so Ringer won't call it.",
+    not_found: null,
+    uncertain_match: null,
+    no_phone: null,
+    lookup_limit: null,
+  };
+  const now = ctx.now();
+  return {
+    ...base,
+    status,
+    can_call: status === "ok",
+    vendor_id: vendor.id,
+    name: vendor.name,
+    phone: vendor.phone_e164,
+    phone_corrected: phoneCorrected,
+    address: vendor.address,
+    open_now: isOpen(vendor.hours, now, tz),
+    next_open: nextOpening(vendor.hours, now, tz)?.toISOString() ?? null,
+    note: notes[status],
+  };
+}
+
+export async function verifyVendors(
   ctx: Ctx,
   userId: string,
-  input: { category: string; search_query: string; location: Location },
+  input: { category: string; location: Location; candidates: VendorCandidate[] },
 ) {
   if (!input.location.confirmed) throw new RingerError("location_unconfirmed", "Confirm the search location with the user first.");
+  if (!input.candidates.length) throw new RingerError("no_candidates", "Search for local businesses first, then pass them here.");
+  if (input.candidates.length > 20) throw new RingerError("too_many_candidates", "Pass at most 20 businesses.");
   const cat = getCategory(input.category);
-  const results = await ctx.providers.places.search(input.search_query, input.location.text);
-  const now = ctx.now();
-  const tz = input.location.timezone ?? ctx.cfg.DEFAULT_TIMEZONE;
-  const vendors = [];
-  for (const r of results) {
-    const v = await store.upsertVendor(ctx.db, {
-      name: r.name,
-      phone_e164: r.phone,
-      address: r.address ?? null,
-      lat: r.lat ?? null,
-      lng: r.lng ?? null,
-      category: cat.id,
-      place_id: r.placeId ?? null,
-      hours: r.hours ?? null,
-      hours_source: r.hours ? ctx.providers.places.constructor.name : null,
-      timezone: tz,
-    });
-    vendors.push({ v, rating: r.rating });
-  }
-  const memory = await store.vendorMemory(ctx.db, userId, vendors.map((x) => x.v.id), cat.id, cat.stale_after_days);
+  const results = [];
+  for (const c of input.candidates) results.push(await verifyCandidate(ctx, userId, c, input.location, cat.id));
+
+  const ids = results.map((r) => r.vendor_id).filter((x): x is string => !!x);
+  const memory = await store.vendorMemory(ctx.db, userId, ids, cat.id, cat.stale_after_days);
+  const withMemory = results.map((r) => ({
+    ...r,
+    recent_observations:
+      r.vendor_id
+        ? memory
+            .filter((m) => m.vendor_id === r.vendor_id)
+            .slice(0, 3)
+            .map((m) => ({
+              observed: new Date(m.observed_at).toISOString().slice(0, 10),
+              summary: `${m.data.description}${m.data.total_price ? ` $${m.data.total_price}` : ""}${m.data.in_stock === false ? " (out of stock)" : ""}`,
+              note: "Last seen, not a current quote.",
+            }))
+        : [],
+  }));
   return {
-    vendors: vendors.map(({ v, rating }) => {
-      const mem = memory.filter((m) => m.vendor_id === v.id);
-      return {
-        vendor_id: v.id,
-        name: v.name,
-        phone: v.phone_e164,
-        address: v.address,
-        rating: rating ?? null,
-        can_call: !v.dnc && Boolean(v.hours?.length),
-        not_callable_reason: v.dnc ? "Asked not to be called" : !v.hours?.length ? "Opening hours unknown" : null,
-        open_now: isOpen(v.hours, now, tz),
-        next_open: nextOpening(v.hours, now, tz)?.toISOString() ?? null,
-        recent_observations: mem.slice(0, 3).map((m) => ({
-          observed: new Date(m.observed_at).toISOString().slice(0, 10),
-          summary: `${m.data.description}${m.data.total_price ? ` $${m.data.total_price}` : ""}${m.data.in_stock === false ? " (out of stock)" : ""}`,
-          note: "Last seen, not a current quote.",
-        })),
-      };
-    }),
+    callable: withMemory.filter((r) => r.can_call),
+    not_callable: withMemory.filter((r) => !r.can_call).map((r) => ({ input_name: r.input_name, status: r.status, note: r.note })),
     instructions:
-      "Show the user every vendor above. Recommend the ones you'd definitely call (with phone number and a short reason), then ask how many they want called. The user can also add their own vendors by phone number.",
+      "Tell the user which businesses were dropped and why (e.g. permanently closed), in one short line each. " +
+      "Show every callable business with its verified phone number, say which ones you'd definitely call and why, and ask how many to call. " +
+      "Use the verified phone numbers, not the ones from your search.",
   };
 }
 
@@ -112,7 +239,7 @@ export interface PlanRunInput {
   need: Need;
   extra_questions?: string[];
   vendors: Array<{ vendor_id: string; selected: boolean; recommended?: boolean; reason?: string }>;
-  user_added_vendors?: Array<{ phone: string; name?: string }>;
+  user_added_vendors?: VendorCandidate[];
   allow_negotiation?: boolean;
   notify_email?: string;
   host?: string;
@@ -132,40 +259,28 @@ export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
 
   for (const v of input.vendors) {
     const row = await store.getVendor(db, v.vendor_id);
-    if (!row) throw new RingerError("unknown_vendor", `Unknown vendor_id ${v.vendor_id}. Use ids from find_vendors.`);
+    if (!row) throw new RingerError("unknown_vendor", `Unknown vendor_id ${v.vendor_id}. Use ids from verify_vendors.`);
+    if (!row.verified_at) throw new RingerError("unverified_vendor", `${row.name} hasn't been verified. Pass it through verify_vendors first.`);
     let selected = v.selected;
     if (selected && row.dnc) {
       selected = false;
       notes.push(`${row.name} asked not to be called, so it's been left out.`);
     }
+    if (selected && row.business_status && row.business_status !== "OPERATIONAL") {
+      selected = false;
+      notes.push(`${row.name} is listed as ${row.business_status === "CLOSED_PERMANENTLY" ? "permanently" : "temporarily"} closed, so it's been left out.`);
+    }
     planVendors.push({ vendor_id: row.id, name: row.name, phone: row.phone_e164, recommended: Boolean(v.recommended), reason: v.reason, source: "ringer", selected });
   }
 
   for (const u of input.user_added_vendors ?? []) {
-    const place = await ctx.providers.places.lookupPhone(store.normalizePhoneAU(u.phone));
-    if (!place || !place.hours?.length)
-      throw new RingerError(
-        "unverified_vendor",
-        `Couldn't verify ${u.name ?? u.phone} (number or opening hours not found). Check the number with the user.`,
-      );
-    const row = await store.upsertVendor(db, {
-      name: place.name,
-      phone_e164: place.phone,
-      address: place.address ?? null,
-      lat: place.lat ?? null,
-      lng: place.lng ?? null,
-      category: cat.id,
-      place_id: place.placeId ?? null,
-      hours: place.hours,
-      hours_source: "places",
-      timezone: input.location.timezone ?? cfg.DEFAULT_TIMEZONE,
-    });
-    if (row.dnc) {
-      notes.push(`${row.name} asked not to be called, so it can't be added.`);
+    const r = await verifyCandidate(ctx, userId, u, input.location, cat.id);
+    if (!r.can_call || !r.vendor_id) {
+      notes.push(`Couldn't add ${u.name}: ${r.note ?? r.status}.`);
       continue;
     }
-    if (!planVendors.some((p) => p.vendor_id === row.id))
-      planVendors.push({ vendor_id: row.id, name: row.name, phone: row.phone_e164, recommended: true, reason: "Added by you", source: "user_added", selected: true });
+    if (!planVendors.some((p) => p.vendor_id === r.vendor_id))
+      planVendors.push({ vendor_id: r.vendor_id, name: r.name!, phone: r.phone!, recommended: true, reason: "Added by you", source: "user_added", selected: true });
   }
 
   // Recommended picks first, then the rest of the selected vendors, then unselected ones.

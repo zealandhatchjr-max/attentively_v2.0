@@ -11,8 +11,9 @@ import * as store from "../core/store.js";
 import { RunStatus } from "../core/types.js";
 import { openDb } from "../db/index.js";
 import { inboundMessage } from "../inbound/index.js";
-import { checkLocalInquiry, findVendors, planRun, requestAction, runView } from "../orchestrator/planning.js";
+import { checkLocalInquiry, planRun, verifyVendors, requestAction, runView } from "../orchestrator/planning.js";
 import { advanceRun, answerCheckpoint, approvePlan, resolveRun } from "../orchestrator/runner.js";
+import { ASSISTANT_SEARCH_RESULTS } from "../providers/fake/vendors.js";
 import { FakeExtractor, FakeNumbers, FakePlaces, FakeVoice, LocalBoard, MemoryMailer } from "../providers/fake/index.js";
 
 const say = (s: string) => console.log(`\n\x1b[1m▶ ${s}\x1b[0m`);
@@ -47,9 +48,13 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
   if (!opts.quiet) console.log(`   fit=${check.fit} category=${check.category} coverage=${check.coverage}`);
 
   const location = { text: "Robina, Gold Coast QLD", confirmed: true };
-  log("find_vendors: show the user every shop found");
-  const found = await findVendors(ctx, user.id, { category: "tyres", search_query: "tyre shop", location });
-  if (!opts.quiet) for (const v of found.vendors) console.log(`   - ${v.name} ${v.phone} ${v.open_now ? "(open)" : ""}`);
+  log("ChatGPT searches the web itself (user's subscription) and finds 8 shops. User: \"yes, ring around\"");
+  log("verify_vendors: Ringer checks each shop with Google (only now, after the user agreed)");
+  const found = await verifyVendors(ctx, user.id, { category: "tyres", location, candidates: ASSISTANT_SEARCH_RESULTS });
+  if (!opts.quiet) {
+    for (const v of found.callable) console.log(`   ✓ ${v.name} ${v.phone}${v.phone_corrected ? " (number corrected)" : ""}`);
+    for (const v of found.not_callable) console.log(`   ✗ ${v.input_name}: ${v.status}. ${v.note ?? ""}`);
+  }
 
   log('User: "Call all 6." plan_run creates the plan and approval link');
   const recommended = new Set(["Robina Tyre & Auto", "Varsity Tyrepower"]);
@@ -58,7 +63,7 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
     category: "tyres",
     location,
     need: { item: "tyres", quantity: 4, required_by: "2026-09-26", specs: { size: "205/55R16", load_speed_index: "91V", fitted: true } },
-    vendors: found.vendors.map((v) => ({ vendor_id: v.vendor_id, selected: true, recommended: recommended.has(v.name), reason: recommended.has(v.name) ? "Lists 205/55R16 and open Saturday" : undefined })),
+    vendors: found.callable.map((v) => ({ vendor_id: v.vendor_id!, selected: true, recommended: recommended.has(v.name!), reason: recommended.has(v.name!) ? "Lists 205/55R16 and open Saturday" : undefined })),
   });
   if (!opts.quiet) console.log(`   approval_url: ${plan.approval_url}\n   estimated ${plan.estimated_minutes} min`);
 
@@ -106,6 +111,9 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
     emails_after_resolve: mailer.sent.length - before,
     calls_before_approval: audit.findIndex((a) => a.type === "call.dialed") < audit.findIndex((a) => a.type === "plan.approved") ? 1 : 0,
     dnc_recorded: (await store.vendorByPhone(db, "+61755550104"))!.dnc,
+    verified: found.callable.map((v) => v.name),
+    dropped: found.not_callable.map((v) => `${v.input_name}: ${v.status}`),
+    phone_corrected: found.callable.filter((v) => v.phone_corrected).map((v) => v.name),
     minutes_left: Math.floor((await store.getUser(db, user.id))!.minutes_balance_seconds / 60),
     view,
     mailer,

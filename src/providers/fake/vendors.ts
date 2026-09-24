@@ -13,7 +13,7 @@ export const ALWAYS_OPEN: OpeningHours = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ d
 
 export interface Persona {
   place: PlaceResult;
-  behaviour: "quote" | "asks_question" | "declines_dnc" | "no_answer" | "alternative_only";
+  behaviour: "quote" | "asks_question" | "declines_dnc" | "no_answer" | "alternative_only" | "closed";
   price_each: number;
   brand: string;
   earliest_days: number;
@@ -72,6 +72,33 @@ export const PERSONAS: Persona[] = [
     earliest_days: 1,
     contact: "Priya",
   },
+  {
+    // Assistants still recommend it, but Google marks it permanently closed.
+    place: { name: "Tugun Tyre Centre", phone: "+61755550107", address: "2 Golden Four Dr, Tugun QLD", hours: weekdays, placeId: "fake-7", businessStatus: "CLOSED_PERMANENTLY" },
+    behaviour: "closed",
+    price_each: 0,
+    brand: "",
+    earliest_days: 0,
+  },
+  {
+    place: { name: "Ashmore Tyre World", phone: "+61755550108", address: "9 Currumburra Rd, Ashmore QLD", hours: weekdays, placeId: "fake-8", businessStatus: "CLOSED_TEMPORARILY" },
+    behaviour: "closed",
+    price_each: 0,
+    brand: "",
+    earliest_days: 0,
+  },
+];
+
+/** What a user's assistant might find with its own web search (includes a closed shop and a wrong number). */
+export const ASSISTANT_SEARCH_RESULTS = [
+  { name: "Robina Tyre & Auto", phone: "07 5555 0101", address: "Robina QLD" },
+  { name: "Varsity Tyrepower", phone: "07 5555 0102", address: "Varsity Lakes QLD" },
+  { name: "Burleigh Wheel Centre", phone: "07 5555 0199", address: "Burleigh Heads QLD" }, // wrong number from an old listing
+  { name: "Nerang Discount Tyres", phone: "07 5555 0104", address: "Nerang QLD" },
+  { name: "Southport Tyre Mart", phone: "07 5555 0105", address: "Southport QLD" },
+  { name: "Mudgeeraba Tyres", address: "Mudgeeraba QLD" }, // no phone found
+  { name: "Tugun Tyre Centre", phone: "07 5555 0107", address: "Tugun QLD" },
+  { name: "Coomera Tyre Barn", phone: "07 5555 0199", address: "Coomera QLD" }, // doesn't exist
 ];
 
 export function personaByPhone(phone: string): Persona | undefined {

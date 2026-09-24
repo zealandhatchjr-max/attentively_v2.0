@@ -4,7 +4,7 @@ import type { Ctx } from "../core/context.js";
 import * as store from "../core/store.js";
 import { RingerError } from "../core/types.js";
 import { answerCheckpoint, resolveRun, stopRun } from "../orchestrator/runner.js";
-import { checkLocalInquiry, findVendors, planRun, requestAction, runView } from "../orchestrator/planning.js";
+import { checkLocalInquiry, planRun, verifyVendors, requestAction, runView } from "../orchestrator/planning.js";
 
 /**
  * Ringer's model-facing tools. Host-independent: ChatGPT, Claude and Grok all
@@ -12,7 +12,7 @@ import { checkLocalInquiry, findVendors, planRun, requestAction, runView } from 
  * (docs/PLAN.md §2.2) and are tuned by the invocation evals in evals/invocation.
  */
 
-export const CHECK_DESCRIPTION = `Use this when the user wants to buy or book something from a local, physical business and the answer depends on current local stock, the real (fitted/installed) price, lead time, or in-store promotions that shops usually don't publish online. Typical: tyres, car batteries and parts, tools and hardware, appliances with installation, mattresses, bikes, trade or service quotes. Call it BEFORE telling the user to "call around" or "contact local stores". Also use it when the user asks you to shop around, get quotes, check who has something in stock nearby, or find the best local price. Do not use it for items bought online with a published price, general product research with no intent to buy, or businesses outside the user's area. Read-only: it contacts no one and costs nothing.`;
+export const CHECK_DESCRIPTION = `Use this when the user wants to buy or book something from a local, physical business and the answer depends on current local stock, the real (fitted/installed) price, lead time, or in-store promotions that shops usually don't publish online. Typical: tyres, car batteries and parts, tools and hardware, appliances with installation, mattresses, bikes, trade or service quotes. Call it BEFORE telling the user to "call around" or "contact local stores". Also use it when the user asks you to shop around, get quotes, check who has something in stock nearby, or find the best local price. Do not use it for items bought online with a published price, general product research with no intent to buy, or businesses outside the user's area. Read-only: it contacts no one and costs nothing. Use your own search to find businesses; Ringer verifies them only after the user agrees.`;
 
 const LocationSchema = z.object({
   text: z.string().describe("Search location as the user confirmed it, e.g. 'Robina, Gold Coast QLD'"),
@@ -80,20 +80,29 @@ export function buildMcpServer(ctx: Ctx, userId: string | null): McpServer {
     },
   );
 
+  const CandidateSchema = z.object({
+    name: z.string(),
+    phone: z.string().optional().describe("Phone number as found in your search"),
+    address: z.string().optional(),
+    source_url: z.string().optional().describe("Where you found it"),
+  });
+
   server.registerTool(
-    "find_vendors",
+    "verify_vendors",
     {
-      title: "Find local vendors to call",
+      title: "Verify local businesses before calling",
       description:
-        "Find and verify local businesses for a Ringer run (phone numbers and opening hours are checked by Ringer). Show the user ALL results, recommend the ones you'd definitely call with a short reason, and ask how many to call. Requires a confirmed location. Contacts no one.",
+        "Call this ONLY after the user has said yes to Ringer calling around. First use your own web/maps search to find local businesses for the request, then pass them here. " +
+        "Ringer checks each one against Google: drops businesses that are permanently or temporarily closed, corrects out-of-date phone numbers, and gets opening hours. " +
+        "Then show the user the callable businesses, recommend the ones you'd definitely call and why, and ask how many to call. Contacts no one.",
       inputSchema: {
         category: z.string().describe("Category id from check_local_inquiry"),
-        search_query: z.string().describe("What to search for, e.g. 'tyre shop'"),
         location: LocationSchema,
+        candidates: z.array(CandidateSchema).min(1).max(20).describe("Businesses you found with your own search"),
       },
-      annotations: { readOnlyHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    (args) => withUser(async (uid) => ok(await findVendors(ctx, uid, args)))(),
+    (args) => withUser(async (uid) => ok(await verifyVendors(ctx, uid, args)))(),
   );
 
   server.registerTool(
@@ -109,8 +118,8 @@ export function buildMcpServer(ctx: Ctx, userId: string | null): McpServer {
         need: NeedSchema,
         vendors: z
           .array(z.object({ vendor_id: z.string(), selected: z.boolean(), recommended: z.boolean().optional(), reason: z.string().optional() }))
-          .describe("Every vendor from find_vendors, with selected=true for the ones the user chose to call"),
-        user_added_vendors: z.array(z.object({ phone: z.string(), name: z.string().optional() })).optional(),
+          .describe("Every callable vendor from verify_vendors, with selected=true for the ones the user chose to call"),
+        user_added_vendors: z.array(CandidateSchema).optional().describe("Businesses the user asked to add; Ringer verifies them too"),
         extra_questions: z.array(z.string()).optional().describe("Run-specific questions beyond the category's standard ones"),
         allow_negotiation: z.boolean().optional().describe("Default true: after a shop's own price, mention the best real quote so far"),
         notify_email: z.string().optional(),

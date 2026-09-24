@@ -39,6 +39,9 @@ export interface VendorRow {
   timezone: string | null;
   dnc: boolean;
   dnc_reason: string | null;
+  business_status: string | null;
+  verified_at: Date | null;
+  source_url: string | null;
 }
 
 export interface RunRow {
@@ -252,7 +255,12 @@ export function normalizePhoneAU(raw: string): string {
 
 export async function upsertVendor(
   db: Db,
-  v: Omit<VendorRow, "id" | "dnc" | "dnc_reason"> & { id?: string },
+  v: Omit<VendorRow, "id" | "dnc" | "dnc_reason" | "business_status" | "verified_at" | "source_url"> & {
+    id?: string;
+    business_status?: string | null;
+    verified_at?: Date | null;
+    source_url?: string | null;
+  },
 ): Promise<VendorRow> {
   const phone = normalizePhoneAU(v.phone_e164);
   const existing = (await db.query<VendorRow>(`SELECT * FROM vendors WHERE phone_e164=$1`, [phone]))[0];
@@ -260,19 +268,37 @@ export async function upsertVendor(
     await db.query(
       `UPDATE vendors SET name=$2, address=COALESCE($3,address), lat=COALESCE($4,lat), lng=COALESCE($5,lng),
          category=COALESCE($6,category), place_id=COALESCE($7,place_id), hours=COALESCE($8,hours),
-         hours_source=COALESCE($9,hours_source), timezone=COALESCE($10,timezone), updated_at=now()
+         hours_source=COALESCE($9,hours_source), timezone=COALESCE($10,timezone),
+         business_status=COALESCE($11,business_status), source_url=COALESCE($12,source_url),
+         verified_at=COALESCE($13, verified_at), updated_at=now()
        WHERE id=$1`,
-      [existing.id, v.name, v.address, v.lat, v.lng, v.category, v.place_id, v.hours ? j(v.hours) : null, v.hours_source, v.timezone],
+      [existing.id, v.name, v.address, v.lat, v.lng, v.category, v.place_id, v.hours ? j(v.hours) : null, v.hours_source, v.timezone, v.business_status ?? null, v.source_url ?? null, v.verified_at ?? null],
     );
     return (await getVendor(db, existing.id))!;
   }
   const id = v.id ?? newId("ven");
   await db.query(
-    `INSERT INTO vendors (id, name, phone_e164, address, lat, lng, category, place_id, hours, hours_source, timezone)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [id, v.name, phone, v.address, v.lat, v.lng, v.category, v.place_id, v.hours ? j(v.hours) : null, v.hours_source, v.timezone],
+    `INSERT INTO vendors (id, name, phone_e164, address, lat, lng, category, place_id, hours, hours_source, timezone, business_status, source_url, verified_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [id, v.name, phone, v.address, v.lat, v.lng, v.category, v.place_id, v.hours ? j(v.hours) : null, v.hours_source, v.timezone, v.business_status ?? null, v.source_url ?? null, v.verified_at ?? null],
   );
   return (await getVendor(db, id))!;
+}
+
+export async function vendorByPlaceId(db: Db, placeId: string): Promise<VendorRow | null> {
+  return (await db.query<VendorRow>(`SELECT * FROM vendors WHERE place_id=$1`, [placeId]))[0] ?? null;
+}
+
+/** Places lookups by this user in the last 24h (cost cap). */
+export async function placesLookupsToday(db: Db, userId: string): Promise<number> {
+  return Number(
+    (
+      await db.query<{ n: string }>(
+        `SELECT count(*) AS n FROM audit_events WHERE user_id=$1 AND type='places.lookup' AND at > now() - interval '1 day'`,
+        [userId],
+      )
+    )[0].n,
+  );
 }
 
 export async function getVendor(db: Db, id: string): Promise<VendorRow | null> {

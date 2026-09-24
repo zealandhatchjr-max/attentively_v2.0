@@ -35,8 +35,11 @@ export interface NumberProvider {
   provisionAssistantNumber(userId: string): Promise<{ number: string; voicePhoneNumberId: string }>;
 }
 
+export type BusinessStatus = "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY";
+
 export interface PlaceResult {
   name: string;
+  businessStatus?: BusinessStatus;
   phone: string;
   address?: string;
   lat?: number;
@@ -47,8 +50,14 @@ export interface PlaceResult {
   rating?: number;
 }
 
+/**
+ * Verification only. Ringer never searches for vendors itself: the user's own
+ * assistant (ChatGPT, Claude, ...) finds them under the user's subscription, and
+ * Ringer checks them here only after the user has agreed to use Ringer.
+ */
 export interface PlacesProvider {
-  search(query: string, near: string): Promise<PlaceResult[]>;
+  /** Best match for a business the assistant found, e.g. "Robina Tyre & Auto, Robina QLD". */
+  findPlace(query: string): Promise<PlaceResult | null>;
   lookupPhone(phone: string): Promise<PlaceResult | null>;
 }
 

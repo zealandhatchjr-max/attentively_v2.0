@@ -3,7 +3,8 @@ import * as store from "../src/core/store.js";
 import { RunStatus, VendorItemStatus } from "../src/core/types.js";
 import type { Db } from "../src/db/index.js";
 import { inboundCallStarted, inboundMessage } from "../src/inbound/index.js";
-import { requestAction, runView } from "../src/orchestrator/planning.js";
+import { requestAction, runView, verifyVendors } from "../src/orchestrator/planning.js";
+import { onboardUser } from "../src/core/onboarding.js";
 import { advanceRun, answerCheckpoint, approvePlan, resolveRun } from "../src/orchestrator/runner.js";
 import { simulate } from "../src/sim/simulate.js";
 import { makeCtx, planTyreRun } from "./helpers.js";
@@ -115,7 +116,7 @@ describe("dialing", () => {
     await drive(t.ctx, first.plan.run_id, t.clock);
     const second = await planTyreRun(t.ctx, { only: ["Nerang Discount Tyres", "Robina Tyre & Auto"] });
     expect(second.plan.vendors_to_call.map((v) => v.name)).toEqual(["Robina Tyre & Auto"]);
-    expect(second.plan.notes.join(" ")).toMatch(/asked not to be called/);
+    expect(second.found.not_callable.find((v) => v.input_name === "Nerang Discount Tyres")?.status).toBe("do_not_call");
   });
 });
 
@@ -222,8 +223,8 @@ describe("shared vendor memory", () => {
     await drive(t.ctx, private_.plan.run_id, t.clock);
 
     const third = await planTyreRun(t.ctx, { only: ["Robina Tyre & Auto"] });
-    const robina = third.found.vendors.find((v) => v.name === "Robina Tyre & Auto")!;
-    const varsity = third.found.vendors.find((v) => v.name === "Varsity Tyrepower")!;
+    const robina = third.found.callable.find((v) => v.name === "Robina Tyre & Auto")!;
+    const varsity = third.found.callable.find((v) => v.name === "Varsity Tyrepower")!;
     expect(robina.recent_observations.length).toBeGreaterThan(0);
     expect(varsity.recent_observations).toHaveLength(0);
     expect(JSON.stringify(robina.recent_observations)).not.toContain(sharer.user.id);
@@ -275,5 +276,86 @@ describe("worker", () => {
     const second = await store.leaseDueRuns(t.db, [RunStatus.Running, RunStatus.NeedsUser], 60);
     expect(first).toEqual([plan.run_id]);
     expect(second).toEqual([]);
+  });
+});
+
+describe("vendor verification (Google Places, only after the user opts in)", () => {
+  const location = { text: "Robina, Gold Coast QLD", confirmed: true };
+
+  it("check_local_inquiry never touches Google", async () => {
+    const t = await makeCtx();
+    db = t.db;
+    const { checkLocalInquiry } = await import("../src/orchestrator/planning.js");
+    await checkLocalInquiry(t.ctx, { request: "need 4 tyres", location_text: "Robina" });
+    expect((t.ctx.providers.places as any).lookups).toBe(0);
+  });
+
+  it("drops permanently and temporarily closed businesses and unknown ones", async () => {
+    const t = await makeCtx();
+    db = t.db;
+    const { user } = await onboardUser(t.ctx, { email: "v@example.com" });
+    const r = await verifyVendors(t.ctx, user.id, {
+      category: "tyres",
+      location,
+      candidates: [
+        { name: "Tugun Tyre Centre", phone: "07 5555 0107" },
+        { name: "Ashmore Tyre World" },
+        { name: "Coomera Tyre Barn", phone: "07 5555 0199" },
+        { name: "Robina Tyre & Auto" },
+      ],
+    });
+    expect(r.callable.map((v) => v.name)).toEqual(["Robina Tyre & Auto"]);
+    expect(Object.fromEntries(r.not_callable.map((v) => [v.input_name, v.status]))).toEqual({
+      "Tugun Tyre Centre": "closed_permanently",
+      "Ashmore Tyre World": "closed_temporarily",
+      "Coomera Tyre Barn": "not_found",
+    });
+  });
+
+  it("corrects an out-of-date phone number from the assistant's search", async () => {
+    const t = await makeCtx();
+    db = t.db;
+    const { user } = await onboardUser(t.ctx, { email: "v@example.com" });
+    const r = await verifyVendors(t.ctx, user.id, { category: "tyres", location, candidates: [{ name: "Burleigh Wheel Centre", phone: "07 5555 0199" }] });
+    expect(r.callable[0].phone).toBe("+61755550103");
+    expect(r.callable[0].phone_corrected).toBe(true);
+  });
+
+  it("reuses recent verifications instead of paying for another lookup", async () => {
+    const t = await makeCtx();
+    db = t.db;
+    const { user } = await onboardUser(t.ctx, { email: "v@example.com" });
+    const cands = [{ name: "Robina Tyre & Auto", phone: "07 5555 0101" }];
+    await verifyVendors(t.ctx, user.id, { category: "tyres", location, candidates: cands });
+    const after1 = (t.ctx.providers.places as any).lookups;
+    await verifyVendors(t.ctx, user.id, { category: "tyres", location, candidates: cands });
+    expect((t.ctx.providers.places as any).lookups).toBe(after1);
+    t.clock.now = new Date(t.clock.now.getTime() + 15 * 86400_000); // older than VERIFY_MAX_AGE_DAYS
+    await verifyVendors(t.ctx, user.id, { category: "tyres", location, candidates: cands });
+    expect((t.ctx.providers.places as any).lookups).toBe(after1 + 1);
+  });
+
+  it("caps Google lookups per user per day", async () => {
+    const t = await makeCtx({ PLACES_LOOKUPS_PER_USER_PER_DAY: "2" });
+    db = t.db;
+    const { user } = await onboardUser(t.ctx, { email: "v@example.com" });
+    const r = await verifyVendors(t.ctx, user.id, {
+      category: "tyres",
+      location,
+      candidates: [{ name: "Robina Tyre & Auto" }, { name: "Varsity Tyrepower" }, { name: "Mudgeeraba Tyres" }],
+    });
+    expect(r.callable).toHaveLength(2);
+    expect(r.not_callable[0].status).toBe("lookup_limit");
+  });
+
+  it("never calls a business that closed after the plan was approved", async () => {
+    const t = await makeCtx();
+    db = t.db;
+    const { plan, user } = await planTyreRun(t.ctx, { only: ["Robina Tyre & Auto"] });
+    await approvePlan(t.ctx, { runId: plan.run_id, userId: user.id, planVersion: 1, method: "approval_page" });
+    await t.db.query(`UPDATE vendors SET business_status='CLOSED_PERMANENTLY' WHERE phone_e164='+61755550101'`);
+    await drive(t.ctx, plan.run_id, t.clock);
+    expect(await store.runCalls(t.db, plan.run_id)).toHaveLength(0);
+    expect((await store.auditEvents(t.db, plan.run_id)).map((e) => e.type)).toContain("call.skipped_closed");
   });
 });

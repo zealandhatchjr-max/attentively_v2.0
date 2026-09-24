@@ -31,8 +31,9 @@ export async function openDb(opts: { databaseUrl?: string; pgliteDir?: string })
 
 export async function migrate(db: Db): Promise<void> {
   const statements = schemaSql()
+    .replace(/--.*$/gm, "")
     .split(/;\s*$/m)
-    .map((s) => s.replace(/--.*$/gm, "").trim())
+    .map((s) => s.trim())
     .filter(Boolean);
   for (const s of statements) await db.query(s);
 }

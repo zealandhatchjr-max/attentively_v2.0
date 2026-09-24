@@ -115,6 +115,14 @@ These override the PRD where they conflict.
 **Voice**
 - **Neutral and professional**, like a polite receptionist. It always opens with the AI disclosure.
 
+**Who pays for what: users never need an API key**
+- Users reach Ringer through their normal **ChatGPT, Claude or other assistant subscription**. The assistant's own research and web/maps search **find the businesses**, under the user's subscription. **Ringer never searches for vendors.**
+- Ringer uses **Google Places only after the user agrees to use Ringer**, and only to **verify** the businesses the assistant found (`verify_vendors`):
+  - It drops businesses Google lists as **permanently or temporarily closed**. Assistants often still recommend them.
+  - It corrects out-of-date phone numbers, gets opening hours, and flags names Google can't match.
+- Verifications are cached for 14 days, and lookups are capped per user per day to control cost. A shop that closes after approval is still skipped before it's dialled.
+- Ringer's own keys (Places, voice, Claude transcript extraction, email) are Ringer's running costs, covered by the Ringer subscription.
+
 **First user**
 - **The founding team** runs real inquiries for themselves first.
 
@@ -237,7 +245,7 @@ Key choices:
 - **Durable orchestrator.** Use Temporal, Inngest, or a Postgres-backed job queue. One workflow per run, one activity per call. This gives restart survival, webhook replay safety and sequential execution without inventing them. Pick whichever the team knows. The requirement is durability plus exactly-once dialing.
 - **Idempotent dialing.** Each dial is keyed by `(run_id, vendor_id, attempt_no, brief_version)`. The telephony adapter refuses a second dial with the same key.
 - **Postgres is the system of record.** The existing board tool is a projection, synced asynchronously. A board failure never blocks or loses a call (PRD §14).
-- **Server-side vendor verification.** The ChatGPT model can suggest candidate vendors from its web search. Ringer re-resolves each one via a places API for phone, hours and address before it goes in a plan, because phone numbers from model search results are the most likely thing to be wrong.
+- **Server-side vendor verification, not search.** The user's assistant finds vendors with its own search. Ringer re-checks each one with Google Places before it goes in a plan: business status (closed?), phone, hours and address. Model search results are the most likely place for a closed shop or a wrong number to slip in.
 - **Widgets read Ringer directly.** The board widget polls `get_run` (or subscribes) through the Apps SDK widget bridge, so progress updates without the model taking a turn.
 
 ### 3.1 Secrets and API keys
@@ -263,7 +271,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 |---|---|---|---|
 | `check_local_inquiry` | none (read-only) | optional | Fit check, category schema, missing fields, coverage, prior observations. **The autonomous entry point.** |
 | `plan_run` | creates a draft run and plan version | required | Validates location, spec, **all** found vendors (re-resolved server-side) with the AI's recommended picks marked, the number of calls **the user chose**, questions, ranking rules, and cost estimate. Returns `plan_version` and renders the **Plan card** widget. |
-| `find_vendors` | none | required | Finds and verifies local vendors (phone and hours re-resolved by Ringer), with vendor-memory hints. The model shows the user all of them, recommends some, and asks how many to call. |
+| `verify_vendors` | Google lookups (cached) | required | Called only after the user agrees to use Ringer. Takes the businesses the assistant found with its own search, drops closed or unknown ones, corrects phone numbers, adds hours and vendor-memory hints. The model then shows the callable ones, recommends some, and asks how many to call. |
 | `get_run` | none | required | Full state: vendor items, observations with evidence, open checkpoints, current recommendation inputs. Renders the **Board** or **Results** widget. |
 | `answer_checkpoint` | new brief version | required | Records the user's answer and resumes the run. A material scope change (budget, cap, identity disclosure) returns `needs_reapproval` instead. |
 | `request_action` | prepares an action | required | Round-2 negotiation call-backs, re-run unanswered vendors, CSV/PDF export. Any action that places calls needs its own approval token. (Bookings and holds are out of MVP scope.) |
@@ -373,7 +381,7 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 | R1 | **Some categories may break a host's listing policy** (weapons, for example). Ringer itself doesn't restrict categories, but a marketplace can reject or pull an app over them. | Keep one per-host exclusion list in config. Check OpenAI's current app policy in Phase 0. Leave excluded categories out of that host's tool descriptions. Other hosts or the Kolaboreyt entry point can still serve them if their policies allow. |
 | R2 | The model over-triggers (annoying) or under-triggers (invisible product) | Eval set (§2.3) gates releases. A read-only entry tool makes over-triggering cheap and harmless. |
 | R3 | The user never comes back to the chat | Email + Kolaboreyt board (§5). Results are never locked inside ChatGPT. |
-| R4 | The model fabricates or garbles vendor phone numbers | Ringer re-resolves every vendor server-side before planning (§3). |
+| R4 | The model recommends closed businesses, or fabricates or garbles phone numbers | `verify_vendors` checks every vendor against Google (business status, phone, hours) before planning, and the runner re-checks status before dialling (§3). |
 | R5 | The model asserts approval without the user | Approval token only from a UI event (§4). An audit test in CI tries `start_run` without a token. |
 | R6 | ChatGPT platform or policy change | Core is host-independent. Claude/Grok adapters and the Kolaboreyt board are the fallback distribution. |
 | R8 | Negotiation misstates a competitor's quote (legal and trust risk) | The AI may only cite observations from this run, passed to it as exact structured values with source. A transcript check after each call flags any cited figure that doesn't match. |

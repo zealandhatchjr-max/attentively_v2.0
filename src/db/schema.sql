@@ -195,3 +195,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
   data      JSONB,
   at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Vendor verification (Google Places, only after the user opts in to a run).
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS business_status TEXT;   -- OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS source_url TEXT;       -- where the assistant found it

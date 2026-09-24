@@ -12,7 +12,7 @@ The assistant decides by itself when Ringer would help. The user approves before
 ```bash
 npm install
 npm run simulate   # a full Gold Coast tyre run against simulated shops
-npm test           # 36 tests: approval gate, dialling, Needs-you, negotiation, inbound, memory, HTTP/MCP
+npm test           # 42 tests: approval gate, dialling, Needs-you, negotiation, inbound, memory, HTTP/MCP
 npm run dev        # server on http://localhost:8787 (MCP endpoint: /mcp)
 ```
 
@@ -32,7 +32,9 @@ For ChatGPT developer mode, expose the server over HTTPS (e.g. a tunnel) and add
 
 ```
 ChatGPT ──MCP──► check_local_inquiry (read-only, no account needed)   "should I offer Ringer?"
-                 find_vendors → user picks how many → plan_run        returns an approval link
+ChatGPT searches the web itself (user's subscription) → user says yes
+        ──MCP──► verify_vendors: Google check (closed? real phone? hours?)  only after the user agrees
+                 user picks how many → plan_run                        returns an approval link
 User ──► /approve/<signed link> ──► Approve                           the only way calls start
 Worker ──► one call at a time, business hours only ──► transcript ──► Claude extraction
        ├─ vendor asks something off-brief → Needs-you email → answer (chat or board) → call back
@@ -46,13 +48,22 @@ User presses Resolved ──► no more emails; late info logged quietly
 |---|---|
 | `src/mcp/server.ts` | Model-facing tools and their trigger descriptions |
 | `src/orchestrator/runner.ts` | Durable call loop: lease, approval check, hours, minutes, exactly-once dial, checkpoints |
-| `src/orchestrator/planning.ts` | Fit check, vendor discovery and verification, plans, follow-ups |
+| `src/orchestrator/planning.ts` | Fit check, vendor verification (closed / phone / hours, cached), plans, follow-ups |
 | `src/orchestrator/script.ts` | Per-call voice prompt and the negotiation audit |
 | `src/core/ranking.ts` | Deterministic ranking. Conditional promos are never deducted |
 | `src/inbound/` | Assistant number and email: callbacks, texts, unknown callers |
 | `src/http/` | Approval page, board page (answer / Resolved), webhooks |
 | `src/providers/` | Twilio, ElevenLabs, Google Places, Claude, Resend, Kolaboreyt, plus fakes |
 | `src/db/schema.sql` | System of record (Postgres). Boards are a projection of it |
+
+## Who pays for what
+
+The user never needs an API key. They use Ringer through their normal ChatGPT or Claude **subscription**. Their assistant does the research and **finds the businesses with its own search**. Ringer's keys (Google Places, voice, Claude transcript extraction, email) are Ringer's running costs, covered by the Ringer subscription. Google Places is used only **after the user agrees to use Ringer**, to verify the businesses the assistant found:
+- It drops **permanently or temporarily closed** businesses. Assistants often still recommend these.
+- It corrects out-of-date phone numbers.
+- It gets opening hours.
+
+Verifications are cached for 14 days (`VERIFY_MAX_AGE_DAYS`), and lookups are capped per user per day (`PLACES_LOOKUPS_PER_USER_PER_DAY`).
 
 ## Secrets
 
@@ -64,7 +75,7 @@ The real provider adapters are written but **not yet run against live accounts**
 
 - [ ] **ElevenLabs:** create the agent, and allow `prompt` and `first_message` overrides. **Switch audio retention off** (transcripts only). Set the conversation-initiation webhook to `/webhooks/voice/inbound-init?secret=…` and the post-call webhook to `/webhooks/voice/post-call?secret=…`. Replace the query-string secret with signature verification.
 - [ ] **Twilio:** set up an Australian regulatory bundle and address, buy a test number with `npm run create-user` and `NUMBER_PROVIDER=twilio`, and check that inbound calls reach the agent and SMS reaches `/webhooks/sms`.
-- [ ] **Google Places:** check that opening hours and phone numbers come back for Gold Coast tyre shops, and review the licensing terms for storing place data.
+- [ ] **Google Places:** check that `businessStatus`, phone numbers and opening hours come back for Gold Coast tyre shops, including a known closed one. Review the licensing terms for caching place data.
 - [ ] **Claude extraction:** set `EXTRACTOR_PROVIDER=anthropic` and check extraction against real transcripts (build `evals/extraction`).
 - [ ] **Email:** set up Resend (or similar) for sending, plus an inbound email route that posts to `/webhooks/email` with `x-ringer-secret`.
 - [ ] **Kolaboreyt:** waiting on the API docs. Implement `src/providers/kolaboreyt.ts`, then set `BOARD_PROVIDER=kolaboreyt`.

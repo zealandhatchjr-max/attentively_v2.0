@@ -122,6 +122,11 @@ async function step(ctx: Ctx, runId: string): Promise<boolean> {
       await store.audit(db, { run_id: runId, actor: "system", type: "call.blocked_dnc", data: { vendor_id: q.vendor_id } });
       continue;
     }
+    if (q.vendor.business_status && q.vendor.business_status !== "OPERATIONAL") {
+      await store.setVendorItemStatus(db, runId, q.vendor_id, VendorItemStatus.Skipped);
+      await store.audit(db, { run_id: runId, actor: "system", type: "call.skipped_closed", data: { vendor_id: q.vendor_id, business_status: q.vendor.business_status } });
+      continue;
+    }
     if (!q.vendor.hours?.length) {
       await store.setVendorItemStatus(db, runId, q.vendor_id, VendorItemStatus.Skipped);
       await store.audit(db, { run_id: runId, actor: "system", type: "call.skipped_unknown_hours", data: { vendor_id: q.vendor_id } });
