@@ -1,0 +1,28 @@
+{"id":"d1","bucket":"direct","prompt":"Ring around and find me 4x 205/55R16 fitted this week on the Gold Coast","expect":"call"}
+{"id":"d2","bucket":"direct","prompt":"Can you call some tyre shops in Robina and get quotes for 2 new front tyres?","expect":"call"}
+{"id":"d3","bucket":"direct","prompt":"Shop around local hardware stores for a Makita 18V impact driver kit, who's cheapest near Southport?","expect":"call"}
+{"id":"d4","bucket":"direct","prompt":"Get me quotes from local mechanics for a timing belt on a 2012 Corolla, I'm in Nerang","expect":"call"}
+{"id":"d5","bucket":"direct","prompt":"Who has a 100Ah AGM battery in stock near Burleigh today? Can you check for me?","expect":"call"}
+{"id":"i1","bucket":"implicit","prompt":"My tyre's got a bulge in the sidewall, where should I get new ones on the Goldy?","expect":"call"}
+{"id":"i2","bucket":"implicit","prompt":"Car battery died this morning, I'm in Varsity Lakes. What should I do?","expect":"call"}
+{"id":"i3","bucket":"implicit","prompt":"I need a new fridge installed by Friday, 400L, I'm at Helensvale. Where do I even start?","expect":"call"}
+{"id":"i4","bucket":"implicit","prompt":"Which bike shops near Robina would have a 29er tube and fit it today?","expect":"call"}
+{"id":"i5","bucket":"implicit","prompt":"I want the best deal on a queen mattress, happy to go in store around Southport","expect":"call"}
+{"id":"img1","bucket":"image","prompt":"[photo of tyre sidewall] need these replaced, all four","expect":"call"}
+{"id":"img2","bucket":"image","prompt":"[photo of a car battery label] this one's dead, who can swap it near me? I'm in Mudgeeraba","expect":"call"}
+{"id":"m1","bucket":"multi_turn","prompt":"[turn 1] What's the difference between Michelin Primacy 4 and Continental PC6? [turn 2] ok the Michelins. Who's got them cheapest near Robina?","expect":"call_on_turn_2"}
+{"id":"m2","bucket":"multi_turn","prompt":"[turn 1] Is 91V ok for a Mazda 3? [turn 2] cool, can you find me someone to fit 4 this week?","expect":"call_on_turn_2"}
+{"id":"n1","bucket":"near_miss","prompt":"Michelin vs Continental for wet grip?","expect":"no_call"}
+{"id":"n2","bucket":"near_miss","prompt":"How often should I rotate my tyres?","expect":"no_call"}
+{"id":"n3","bucket":"near_miss","prompt":"What does 91V mean on a tyre?","expect":"no_call"}
+{"id":"n4","bucket":"near_miss","prompt":"Is it safe to drive on a tyre with a bulge?","expect":"no_call_or_offer_after_safety_answer"}
+{"id":"n5","bucket":"near_miss","prompt":"Write me a review of Beaurepaires","expect":"no_call"}
+{"id":"n6","bucket":"near_miss","prompt":"What's a fair price for 4 tyres in Australia, roughly?","expect":"no_call"}
+{"id":"o1","bucket":"online_buyable","prompt":"Cheapest AirPods Pro right now?","expect":"no_call"}
+{"id":"o2","bucket":"online_buyable","prompt":"Find me a good deal on a PS5 controller","expect":"no_call"}
+{"id":"o3","bucket":"online_buyable","prompt":"Where can I buy a phone case for an iPhone 17 online?","expect":"no_call"}
+{"id":"c1","bucket":"out_of_coverage","prompt":"Ring around for tyres in Perth for me","expect":"call_then_not_covered"}
+{"id":"c2","bucket":"out_of_coverage","prompt":"Get quotes from plumbers in Melbourne for a hot water system","expect":"call_then_not_covered"}
+{"id":"l1","bucket":"location","prompt":"Find me 4 tyres fitted this week","expect":"call_then_ask_location"}
+{"id":"s1","bucket":"services","prompt":"Can you get quotes for a car service on the Gold Coast? Need it done Thursday","expect":"call"}
+{"id":"s2","bucket":"services","prompt":"Need a locksmith quote to rekey 3 locks in Broadbeach","expect":"call"}

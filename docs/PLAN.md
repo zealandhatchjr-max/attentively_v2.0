@@ -69,6 +69,10 @@ Vendor calls the user's assistant number later â†’ inbound AI recognises them â†
 
 ---
 
+## 1.0 Build status (2026-09-24)
+
+The Phase 1 core is built and tested with simulated providers. See README.md for what's real, what's faked, and the Phase 0 go-live checklist.
+
 ## 1.1 Product decisions (from founder Q&A, 2026-09-24)
 
 These override the PRD where they conflict.
@@ -259,7 +263,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 |---|---|---|---|
 | `check_local_inquiry` | none (read-only) | optional | Fit check, category schema, missing fields, coverage, prior observations. **The autonomous entry point.** |
 | `plan_run` | creates a draft run and plan version | required | Validates location, spec, **all** found vendors (re-resolved server-side) with the AI's recommended picks marked, the number of calls **the user chose**, questions, ranking rules, and cost estimate. Returns `plan_version` and renders the **Plan card** widget. |
-| `start_run` | dials | required + **approval token** | Starts the orchestrator for an approved `plan_version`. Fails if the token is missing, stale or already used. |
+| `find_vendors` | none | required | Finds and verifies local vendors (phone and hours re-resolved by Ringer), with vendor-memory hints. The model shows the user all of them, recommends some, and asks how many to call. |
 | `get_run` | none | required | Full state: vendor items, observations with evidence, open checkpoints, current recommendation inputs. Renders the **Board** or **Results** widget. |
 | `answer_checkpoint` | new brief version | required | Records the user's answer and resumes the run. A material scope change (budget, cap, identity disclosure) returns `needs_reapproval` instead. |
 | `request_action` | prepares an action | required | Round-2 negotiation call-backs, re-run unanswered vendors, CSV/PDF export. Any action that places calls needs its own approval token. (Bookings and holds are out of MVP scope.) |
@@ -269,7 +273,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 
 Replaced from the PRD: `place_call`, `get_call`, `wait_for_call` and `save_result` become orchestrator internals (change #3). `approve_run` becomes a **widget-only action**, not a model tool. `vendor_memory` is folded into `check_local_inquiry` and `plan_run`.
 
-**How approval works:** the Plan card's *Approve* button calls a Ringer endpoint from the widget with the user's session. Ringer records `approval{user_id, plan_version, ui_event, timestamp}` and returns a one-time token. The model then calls `start_run(token)`. The model cannot produce an approval on its own, which satisfies "zero calls without a matching approval event". If the widget bridge can't support this cleanly, the fallback is a `start_run` gated by ChatGPT's own write-action confirmation, plus Ringer's plan-version check. Phase 0 decides which.
+**How approval works (as built):** `plan_run` returns a signed **approval link** to a Ringer page showing the full plan. The user presses *Approve* there, and that press both records `approval{user_id, plan_version, method, time}` and starts the run. No model-facing tool can approve or start calls. The runner also re-checks, before every dial, that the vendor's plan version has an approval. A stale link (the plan changed since) is rejected. In Phase 2 the ChatGPT Plan-card widget links to, or embeds, the same approval action.
 
 ---
 
