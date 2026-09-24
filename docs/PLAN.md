@@ -81,7 +81,7 @@ These override the PRD where they conflict.
 **Inbound: the assistant number is always answered by the AI**
 - Every inbound call to a user's number goes to the voice agent.
 - On ring, the agent looks up the caller's number against Ringer's database: which vendor is this, and which runs and calls have we had with them for this user? It then loads the previous call's notes and transcript summary into its context ("Hi, thanks for calling back about the 205/55R16 tyres…").
-- Unknown callers get a polite receptionist flow: take a message, attach it to the user's account, and email the user.
+- Unknown callers (including the user's own phone, since the user doesn't know the number) get a polite receptionist flow: take a message, attach it to the user's account, and email the user.
 - Everything a callback captures lands on the run's Kolaboreyt board as a new call record with the same evidence rules as outbound calls.
 
 **Negotiation**
@@ -113,6 +113,32 @@ These override the PRD where they conflict.
 
 **First user**
 - **The founding team** runs real inquiries for themselves first.
+
+**Assistant number is hidden from the user too**
+- The user is **never shown** their assistant number. It exists only for vendors to call back and text. When the user's own phone calls it, it gets the normal receptionist flow. Users reach Ringer through ChatGPT, email and the board link.
+
+**Written replies: every assistant gets an email address and SMS**
+- Each user's assistant also gets an **email address** (e.g. `a-7f3k@assist.ringer…`), and its number **accepts SMS**.
+- If a vendor asks "can you email or text me the details?", the AI gives the assistant's address or number. Inbound emails and texts are matched to the vendor and run (by sender, then by thread or reference), parsed into observations, and added to the board, following the same late-info and Resolved rules as callbacks.
+
+**Kolaboreyt: Ringer owns the boards**
+- All boards live in **Ringer's Kolaboreyt workspace**. Users get a per-run **share link**, where they can view the board, answer *Needs you* and press Resolved. Users do not get Kolaboreyt accounts.
+
+**Shared vendor data: opt-in, anonymised, dated**
+- A user's observations feed the shared vendor memory **only if they opt in**. They are stored with **no link to who asked**, and **always carry the date observed**.
+- Every observation's weight decays with age: a price or stock level older than a category-specific window (e.g. 14 days for tyre prices) is shown as "last seen" context, never as a current quote, and is never used as negotiation leverage.
+
+**Transcripts only, no audio kept**
+- Calls are **transcribed but not recorded**. No audio is kept by Ringer, Twilio or ElevenLabs. Recording and audio retention must be switched off at every provider, and Phase 0 has to verify this. The transcript plus the extracted fields are the evidence. (This overrides the PRD's "audio reference".) The opening line says the call is transcribed.
+
+**Needs you with no reply**
+- If the user hasn't answered within **~2 business hours**, Ringer **skips the question and continues** with the remaining vendors on the current brief. The unanswered question and its vendor are listed in the report.
+
+**Alternatives offered by vendors**
+- When a vendor offers a substitute ("no Michelin, but Hankook for $130"), the AI **always records it** as a separate option on the board, clearly labelled **Alternative**. The report ranks alternatives apart from exact matches.
+
+**User-added vendors**
+- The user can add vendors by name or phone number ("also call Dave's Tyres"). Ringer verifies each one (hours, category) and adds it to the plan, marked **user-added**.
 
 ---
 
@@ -272,6 +298,8 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 - Audit the existing inbound Twilio + ElevenLabs code: can it do **outbound** with a **per-call prompt override** and a **structured data-collection schema**? Record reuse, modify or rebuild for each component.
 - Spike a ChatGPT dev-mode app: a hello-world MCP tool, a widget, OAuth account linking, and a widget → backend call (to validate the approval-token flow in §4).
 - Spike the Kolaboreyt API (once the key and instructions arrive): create a board per run, adaptive columns, item updates, per-run links for emails, and a Resolved status or button that can reach Ringer (webhook or polling).
+- Spike assistant inboxes: per-user inbound email address and SMS on the number, matched to vendor and run.
+- Verify that recording and audio retention can be switched off at Twilio and ElevenLabs while live transcripts are kept.
 - Spike per-user numbers: buy and configure a Twilio number by API, route its inbound calls to the voice agent, and look up the caller before the agent speaks (ElevenLabs conversation-initiation webhook or equivalent).
 - Legal: Queensland recording position, AI-disclosure script, whether B2B inquiry calls fall outside telemarketing/DNC rules, and OpenAI app policy fit (see R1).
 - **Exit:** signed ADR, one outbound test call to a team phone with an overridden prompt and structured extraction, one widget rendering in ChatGPT dev mode.
@@ -361,7 +389,8 @@ The PRD's other risks (vendor rejection, extraction errors, recording law, cost)
 - ✅ **Notifications:** email, linking to the run's Kolaboreyt board.
 - ✅ **Categories:** not restricted by product choice. Tyres, guns and tools were examples. Exclusions come only from host policy (R1).
 - ✅ Assistant number per user, AI answers all inbound, negotiation rules, report plus next step, queue-until-open, Resolved button, minutes billing, sign-up on Ringer's site, voice, first user: see §1.1.
-- ✅ **Kolaboreyt** is the team's existing monday.com-style board tool.
+- ✅ **Kolaboreyt** is the team's existing monday.com-style board tool. Ringer owns the workspace and users get share links.
+- ✅ Opt-in anonymised dated data sharing, transcripts only, hidden assistant number, assistant email and SMS, skip Needs-you after ~2 business hours, record alternatives, user-added vendors: see §1.1.
 
 **Still open**
 1. **Kolaboreyt API:** waiting on the key and integration instructions. Put the key in `KOLABOREYT_API_KEY` as an environment secret, not in chat or the repo. Check: per-run board links, custom columns, and Resolved status sync.
@@ -371,7 +400,7 @@ The PRD's other risks (vendor rejection, extraction errors, recording law, cost)
 5. **Email provider** (e.g. Postmark, SES, Resend).
 6. **Safety ceiling value** for calls per run (config, e.g. 10–15).
 7. **Plan pricing:** minutes per tier, price, top-up price, and whether the assistant number is included.
-8. The remaining PRD §21 decisions (recording, retention, human review).
+8. The remaining PRD §21 decisions (retention period, human review of recommendations).
 
 ---
 
