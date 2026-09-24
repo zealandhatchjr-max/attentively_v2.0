@@ -15,9 +15,9 @@ The PRD still holds. This plan changes five things so it fits ChatGPT and the go
 | 2 | The user or host explicitly starts Ringer | **The model invokes Ringer itself** when it sees a local-buy-with-hidden-stock situation. This needs a new cheap, safe entry tool and invocation evals (§2). | This is the core product behaviour you described. |
 | 3 | The host assistant runs the call loop (`place_call` → `wait_for_call` → checkpoint → next) | **Ringer runs the loop server-side.** The host only plans, approves, answers checkpoints, and presents results. | A five-call run takes 20–40 minutes. A ChatGPT turn ends long before that, and the model does not run between user messages. A long-blocking `wait_for_call` would time out. |
 | 4 | Checkpoint reasoning happens in the host model | **Ringer's own LLM** does extraction and in-brief/out-of-brief classification after each call. Anything that needs a human becomes *Needs you*. | Same reason: nobody is "in the chat" while calls run. |
-| 5 | Standalone entry point comes in Phase 5 | **A minimal Ringer run page and notifications ship in the MVP.** | ChatGPT cannot reliably post into a conversation on its own later. Ringer needs its own way to reach the user (SMS or email plus a run page) for *Needs you* and *Done*. |
+| 5 | Standalone entry point comes in Phase 5 | **Email notifications and a board link (Kolaboreyt) ship in the MVP.** | ChatGPT cannot reliably post into a conversation on its own later. Ringer needs its own way to reach the user (an email linking to the Kolaboreyt board) for *Needs you* and *Done*. |
 
-Also: open decision #6 (call cap shown as 😎) is almost certainly **"8)"**, which got auto-converted to an emoji. This plan assumes **default cap = 5 initial calls, hard max = 8**.
+Also: open decision #6 (call cap) is resolved. **There is no fixed default.** The AI shows the user every suitable vendor it found, says which ones it would definitely call and why, and **asks how many to call** (§2.4). A system-wide safety ceiling set in config stays in place to protect against runaway cost.
 
 ---
 
@@ -38,7 +38,10 @@ Model reads the size off the photo (e.g. 205/55R16 91V), researches, asks ≤3 q
   │
   ▼
 Model calls ringer.plan_run → widget renders the PLAN CARD
-  (location, spec, 5 vendors + skipped ones, script, cap, cost, AI/recording notice)
+  "I found 10 local vendors. I'd definitely call Beaurepaires Robina (07 …) and
+   Tyrepower Varsity Lakes (07 …), they list your size. How many would you like me to call?"
+  User: "Call 4"
+  (location, spec, the 4 chosen + the others listed, script, cost, AI/recording notice)
   │
   ▼
 User taps [Approve]  ← approval is a UI event tied to the user, not something the model asserts
@@ -47,12 +50,12 @@ User taps [Approve]  ← approval is a UI event tied to the user, not something 
 Ringer orchestrator: call 1 → extract → brief v2 → call 2 → ... (sequential, business hours)
   │            │
   │            └─ vendor asks "which load rating?" and it's not in the brief
-  │                → vendor item = NEEDS YOU, run pauses, SMS/email to user
+  │                → vendor item = NEEDS YOU, run pauses, email to user
   ▼
-User answers (in ChatGPT, on the widget, or on the run page) → brief v3 → run resumes
+User answers (in ChatGPT, on the widget, or on the Kolaboreyt board) → brief v3 → run resumes
   │
   ▼
-Run complete → notification → user opens chat → model calls get_run → RESULTS CARD
+Run complete → email → user opens chat → model calls get_run → RESULTS CARD
   Best overall / cheapest valid / fastest, with evidence links per claim
   │
   ▼
@@ -90,7 +93,7 @@ Rules for writing tool metadata:
 - **Name the moment, not the mechanism.** The model matches "the user needs to call around", not "outbound telephony".
 - **Name the anti-pattern it replaces:** "Call it before telling the user to call around". This is the strongest trigger.
 - **List the negatives**, so the model doesn't fire on "what's the best tyre brand?"
-- **Firearms are not in the trigger list or the category registry** (see §8, risk R1).
+- **Categories are config, not code.** Tyres, guns and tools were only examples. Any category can be added to the registry. The only exclusions are those the host platform's policy forces, and they live in one config list (see §8, risk R1).
 
 ### 2.3 Invocation eval set (built in Phase 1, gates every release)
 
@@ -104,10 +107,22 @@ Build a labelled prompt set (~150 prompts to start) and run it against ChatGPT d
 | Near-miss (should not fire) | "Michelin vs Continental for wet grip?" | no call |
 | Online-buyable | "Cheapest AirPods?" | no call |
 | Out of coverage | "Tyres in Perth" | call → `coverage: none` → model says so gracefully |
-| Restricted | Firearms, ammo, prescription drugs | no call; if called, `fit: poor, reason: unsupported` |
+| Platform-restricted | Whatever the ChatGPT policy list excludes (checked in Phase 0) | no call; if called, `fit: poor, reason: unsupported_on_host` |
 | Multi-turn drift | Research chat that turns into "ok who has it cheapest near me?" | fires at the turn where intent appears |
 
 Metrics: precision and recall of invocation, false-positive rate on near-misses, and whether the model asks ≤3 questions before `plan_run`.
+
+### 2.4 The user chooses how many vendors to call
+
+There is no fixed call count. After research, the AI shows the user **everything it found** and makes a recommendation:
+
+> "I found 10 local tyre shops that fit fitted tyres in Robina. I'd definitely call **Beaurepaires Robina (07 …)** and **Tyrepower Varsity Lakes (07 …)**, because both list 205/55R16 in their range and are open Saturday. Kmart Tyre & Auto is the closest but often out of stock in this size. How many would you like me to call? I'll go one at a time, best bets first."
+
+What this means for the build:
+- `plan_run` returns **all** candidates, each with a `recommended` flag, a short `reason` and its phone number. Call order is recommended picks first, then the rest by the ranking rules.
+- The Plan card shows the full list with the recommended ones pre-ticked. The user can tick or untick vendors or just type a number. The cost estimate updates as they change it.
+- The chosen number and vendor list are part of the approved plan version. Calling more vendors later ("try 2 more") needs a new approval.
+- A system-wide **safety ceiling** (config, not user-facing by default) stops a single run from placing an unreasonable number of calls.
 
 ---
 
@@ -125,7 +140,7 @@ Metrics: precision and recall of invocation, false-positive rate on near-misses,
         │  Vendor service (canonical IDs, DNC, hours, memory)  │
         │  Extraction/checkpoint LLM                           │
         │  Approval + audit log (append-only)                  │
-        │  Notification service (SMS / email)                  │
+        │  Notification service (email)                        │
         │  Board sync (existing board tool, best-effort)       │
         └────────────┬─────────────────────────────────────────┘
           Telephony interface │ Voice-agent interface │ Places interface
@@ -163,7 +178,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 | Tool | Side effects | Auth | Purpose |
 |---|---|---|---|
 | `check_local_inquiry` | none (read-only) | optional | Fit check, category schema, missing fields, coverage, prior observations. **The autonomous entry point.** |
-| `plan_run` | creates a draft run and plan version | required | Validates location, spec, vendors (re-resolved server-side), questions, ranking rules, cap, and cost estimate. Returns `plan_version` and renders the **Plan card** widget. |
+| `plan_run` | creates a draft run and plan version | required | Validates location, spec, **all** found vendors (re-resolved server-side) with the AI's recommended picks marked, the number of calls **the user chose**, questions, ranking rules, and cost estimate. Returns `plan_version` and renders the **Plan card** widget. |
 | `start_run` | dials | required + **approval token** | Starts the orchestrator for an approved `plan_version`. Fails if the token is missing, stale or already used. |
 | `get_run` | none | required | Full state: vendor items, observations with evidence, open checkpoints, current recommendation inputs. Renders the **Board** or **Results** widget. |
 | `answer_checkpoint` | new brief version | required | Records the user's answer and resumes the run. A material scope change (budget, cap, identity disclosure) returns `needs_reapproval` instead. |
@@ -183,13 +198,13 @@ Replaced from the PRD: `place_call`, `get_call`, `wait_for_call` and `save_resul
 |---|---|
 | Plan | Plan card widget inline in the chat |
 | Calls in progress | Board widget (live-polls Ringer). The user can leave. |
-| **Needs you** | SMS or email containing the exact question + a link to the **Ringer run page**. The answer can come from the page, the widget, or by telling ChatGPT. |
-| Done | SMS or email + run page. Back in ChatGPT, "how did it go?" → `get_run` → Results card. |
+| **Needs you** | Email containing the exact question + a link to the run's **Kolaboreyt board**. The answer can come from the board, the widget, or by telling ChatGPT. |
+| Done | Email + Kolaboreyt board link. Back in ChatGPT, "how did it go?" → `get_run` → Results card. |
 | Vendor callback | The vendor calls the Ringer number back. The inbound agent looks up the run by caller ID and handles it. (Reuses the existing inbound Twilio/ElevenLabs stack.) |
 
-The **run page** is a small authenticated web view of the same board. It is also the seed of the standalone entry point, and a hedge against marketplace risk.
+The **Kolaboreyt board** does the job of the standalone run page. Users can follow and answer a run there without ChatGPT, which is also the hedge against marketplace risk. (This assumes Kolaboreyt is the existing board tool from the PRD. See §9.)
 
-The user chooses notification consent and channel on the Plan card, before approving.
+The user confirms their email for notifications on the Plan card, before approving.
 
 ---
 
@@ -214,7 +229,7 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 
 ### Phase 2: ChatGPT app and reliability (3–4 weeks)
 - Widgets: Plan card, Board, Needs-you prompt, Results with evidence drill-down.
-- Approval-token flow, OAuth account linking, notification service, minimal run page.
+- Approval-token flow, OAuth account linking, email notification service, Kolaboreyt board links and the answer-from-board flow.
 - DNC store, duplicate-call protection, retry policy, webhook replay safety, vendor canonicalisation, vendor memory in `check_local_inquiry`.
 - Tune invocation metadata until eval targets are met: e.g. ≥90% recall on direct/implicit and ≤5% false positives on near-misses.
 - **10 supervised internal runs** from ChatGPT dev mode.
@@ -262,34 +277,40 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | **Firearms (and similar) conflict with platform policy.** Your examples include guns. App-store and usage policies commonly restrict helping people acquire weapons, and a listing can be rejected or pulled for it. | Firearms are out of the category registry and out of the tool descriptions. `check_local_inquiry` returns `fit: poor, reason: unsupported` for them. Check current OpenAI app policy in Phase 0 before promising any restricted category. |
+| R1 | **Some categories may break a host's listing policy** (weapons, for example). Ringer itself doesn't restrict categories, but a marketplace can reject or pull an app over them. | Keep one per-host exclusion list in config. Check OpenAI's current app policy in Phase 0. Leave excluded categories out of that host's tool descriptions. Other hosts or the Kolaboreyt entry point can still serve them if their policies allow. |
 | R2 | The model over-triggers (annoying) or under-triggers (invisible product) | Eval set (§2.3) gates releases. A read-only entry tool makes over-triggering cheap and harmless. |
-| R3 | The user never comes back to the chat | Notifications + run page (§5). Results are never locked inside ChatGPT. |
+| R3 | The user never comes back to the chat | Email + Kolaboreyt board (§5). Results are never locked inside ChatGPT. |
 | R4 | The model fabricates or garbles vendor phone numbers | Ringer re-resolves every vendor server-side before planning (§3). |
 | R5 | The model asserts approval without the user | Approval token only from a UI event (§4). An audit test in CI tries `start_run` without a token. |
-| R6 | ChatGPT platform or policy change | Core is host-independent. Claude/Grok adapters and the run page are the fallback distribution. |
+| R6 | ChatGPT platform or policy change | Core is host-independent. Claude/Grok adapters and the Kolaboreyt board are the fallback distribution. |
 | R7 | Tyre spec misread from the photo | The spec is always echoed on the Plan card for confirmation. Load/speed index is a required confirmed field. |
 
 The PRD's other risks (vendor rejection, extraction errors, recording law, cost) stand as written.
 
 ---
 
-## 9. Decisions needed before estimating
+## 9. Decisions
 
-1. **Confirm ChatGPT-first** (versus the PRD's Grok-first). This plan assumes yes.
-2. **Call cap:** confirm 5 default / 8 max (the 😎 was probably "8)").
-3. **Approval mechanism:** widget-issued token (preferred) or host write-confirmation. Phase 0 spike decides.
-4. **Notification channel** for *Needs you* / *Done*: SMS, email, or both. SMS needs the user's number and consent.
-5. **Orchestrator tech:** Temporal vs Inngest vs a Postgres queue.
-6. **Vendor discovery source:** Google Places vs an alternative, and its licensing for storing vendor data in vendor memory.
-7. **Restricted categories:** confirm firearms are out at launch.
-8. The remaining PRD §21 decisions (recording, disclosure defaults, pilot pricing, retention, human review).
+**Resolved**
+- ✅ **ChatGPT first.**
+- ✅ **Number of calls:** the user chooses for each run. The AI lists every vendor it found, recommends the ones it would definitely call (with phone numbers and reasons), and asks how many to call (§2.4). A config safety ceiling still applies.
+- ✅ **Notifications:** email, linking to the run's Kolaboreyt board.
+- ✅ **Categories:** not restricted by product choice. Tyres, guns and tools were examples. Exclusions come only from host policy (R1).
+
+**Still open**
+1. **Confirm Kolaboreyt is the existing board tool** from the PRD, and that each run can get a shareable or authenticated board link to put in emails.
+2. **Approval mechanism:** widget-issued token (preferred) or host write-confirmation. Phase 0 spike decides.
+3. **Orchestrator tech:** Temporal vs Inngest vs a Postgres queue.
+4. **Vendor discovery source:** Google Places vs an alternative, and its licensing for storing vendor data in vendor memory.
+5. **Email provider** (e.g. Postmark, SES, Resend).
+6. **Safety ceiling value** for calls per run (config, e.g. 10–15).
+7. The remaining PRD §21 decisions (recording, disclosure defaults, pilot pricing, retention, human review).
 
 ---
 
 ## 10. Next concrete steps (this week)
 
-1. Answer the §9 decisions, starting with 1–4.
+1. Answer the open §9 decisions, starting with Kolaboreyt.
 2. Give engineering access to the existing inbound Twilio/ElevenLabs code and the board-tool API docs.
 3. Start the Phase 0 spikes in parallel: outbound call with prompt override, ChatGPT dev-mode widget + OAuth, board API.
 4. Draft the invocation eval prompts. Anyone on the team can write these, and it's the fastest way to sharpen *when* Ringer should appear.
