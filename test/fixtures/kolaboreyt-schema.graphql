@@ -1,0 +1,57 @@
+type User { id: ID!, name: String, email: String }
+type Notification { id: ID!, type: String, text: String, target_type: String, target_id: ID, board_id: ID, read_at: String, created_at: String }
+type ColumnValue { id: ID!, column_id: ID!, value_json: String, display_text: String }
+type Item { id: ID!, name: String!, board_id: ID!, group_id: ID!, parent_item_id: ID, position: Float, state: String, created_at: String, updated_at: String, column_values: [ColumnValue!]! }
+type ItemUpdate { id: ID!, board_id: ID!, item_id: ID!, body: String!, created_by: ID!, created_at: String, updated_at: String }
+type ItemsPage { cursor: String, items: [Item!]! }
+type Group { id: ID!, title: String, position: Float }
+type ColumnLabel { id: ID!, label: String!, color: String, description: String, is_done: Boolean!, is_deactivated: Boolean! }
+type Column { id: ID!, key: String!, title: String!, type: String!, description: String, owner_kind: String!, inherited_from_column_id: ID, position: Float, width: Int, hidden: Boolean!, required: Boolean!, settings_json: String!, labels: [ColumnLabel!]! }
+type Automation { id: ID!, board_id: ID, name: String!, description: String, recipe_id: ID, status: String!, effective_status: String!, importance: String!, is_template: Boolean!, preview: String, trigger_json: String, conditions_json: String!, actions_json: String!, column_bindings_json: String!, group_bindings_json: String!, policy_violations_json: String!, created_by: ID, run_count: Int!, failure_count: Int!, last_run_at: String, created_at: String, updated_at: String }
+type AutomationCapabilities { triggers_json: String!, conditions_json: String!, actions_json: String!, grammar_json: String!, product_policy_json: String!, webhook_event_names: [String!]! }
+type AutomationRecipe { id: ID!, category: String, title: String!, description: String, compatible: Boolean, policy_available: Boolean!, missing_columns: [String!]!, missing_groups: [String!]!, required_columns_json: String!, required_groups_json: String!, default_config_json: String! }
+type AutomationRun { id: ID!, automation_id: ID!, board_id: ID, status: String, reason_code: String, error_message: String, trigger_event_type: String, matched_item_count: Int, action_count: Int, started_at: String, completed_at: String }
+type Workspace { id: ID!, name: String!, description: String, color: String, letter: String, icon: String, type: String!, visibility: String!, product_area: String, is_default: Boolean!, created_by: ID!, created_at: String, updated_at: String }
+type Board { id: ID!, name: String!, description: String, workspace_id: ID!, state: String, groups: [Group!]!, columns(owner_kind: String): [Column!]!, items_page(limit: Int = 25, cursor: String): ItemsPage! }
+type DocumentBlock { id: ID!, doc_id: ID!, parent_block_id: ID, type: String!, content_json: String!, position: Float!, created_by: ID!, created_at: String, updated_at: String }
+type Document { id: ID!, object_id: ID!, name: String!, workspace_id: ID, item_id: ID, board_id: ID, column_id: ID, doc_kind: String!, edit_permission: String!, created_by: ID!, created_at: String, updated_at: String, deleted: Boolean!, blocks(limit: Int = 200): [DocumentBlock!]! }
+type Query {
+  me: User!
+  boards(ids: [ID!], limit: Int = 25): [Board!]!
+  items(ids: [ID!]!): [Item!]!
+  list_subitems(parent_item_id: ID!): [Item!]!
+  next_items_page(cursor: String!, limit: Int = 25): ItemsPage!
+  notifications(unread: Boolean = false, limit: Int = 30): [Notification!]!
+  documents(ids: [ID!], workspace_ids: [ID!], limit: Int = 25): [Document!]!
+  automations(board_id: ID!, limit: Int = 50): [Automation!]!
+  automation_capabilities: AutomationCapabilities!
+  automation_recipes(board_id: ID): [AutomationRecipe!]!
+  automation_runs(automation_id: ID!, limit: Int = 25): [AutomationRun!]!
+}
+type Mutation {
+  create_workspace(name: String!, description: String, type: String = "team", visibility: String = "open", product_area: String, account_id: ID): Workspace!
+  create_board(workspace_id: ID!, name: String!, description: String, board_kind: String = "public", permissions: String = "everyone"): Board!
+  create_column(board_id: ID!, title: String!, column_type: String!, description: String, settings: String, width: Int, after_column_id: ID, owner_kind: String = "item"): Column!
+  update_column(board_id: ID!, column_id: ID!, title: String, description: String, column_type: String, settings: String, width: Int, hidden: Boolean): Column!
+  delete_column(board_id: ID!, column_id: ID!): Column!
+  create_column_label(board_id: ID!, column_id: ID!, label: String!, color: String, description: String, is_done: Boolean): ColumnLabel!
+  update_column_label(board_id: ID!, column_id: ID!, label_id: ID!, label: String, color: String, description: String, is_done: Boolean, is_deactivated: Boolean): ColumnLabel!
+  delete_column_label(board_id: ID!, column_id: ID!, label_id: ID!): ColumnLabel!
+  create_automation(board_id: ID!, name: String!, trigger: String!, actions: String!, conditions: String, description: String, status: String = "draft", importance: String): Automation!
+  create_automation_from_recipe(board_id: ID!, recipe_id: ID!, name: String, status: String, column_bindings: String, group_bindings: String, config: String): Automation!
+  update_automation(automation_id: ID!, name: String, description: String, status: String, importance: String, trigger: String, conditions: String, actions: String): Automation!
+  delete_automation(automation_id: ID!): Automation!
+  create_item(board_id: ID!, group_id: ID!, item_name: String!, initial_values: String): Item!
+  create_subitem(parent_item_id: ID!, item_name: String!, initial_values: String): Item!
+  delete_subitem(parent_item_id: ID!, subitem_id: ID!): Item!
+  archive_item(board_id: ID!, item_id: ID!): Item!
+  change_item(board_id: ID!, item_id: ID!, item_name: String, group_id: ID): Item!
+  change_column_value(board_id: ID!, item_id: ID!, column_id: ID!, value: String!, add_missing_labels: Boolean = false, create_labels_if_missing: Boolean = false): ColumnValue
+  add_item_update(board_id: ID!, item_id: ID!, body: String!): ItemUpdate!
+  create_document(workspace_id: ID!, name: String!, doc_kind: String = "public", edit_permission: String = "everyone"): Document!
+  update_document(doc_id: ID!, name: String, doc_kind: String, edit_permission: String): Document!
+  delete_document(doc_id: ID!): Document!
+  create_document_block(doc_id: ID!, type: String!, content: String!, parent_block_id: ID, after_block_id: ID): DocumentBlock!
+  update_document_block(doc_id: ID!, block_id: ID!, type: String, content: String): DocumentBlock!
+  delete_document_block(doc_id: ID!, block_id: ID!): DocumentBlock!
+}

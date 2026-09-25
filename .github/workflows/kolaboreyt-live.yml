@@ -1,0 +1,46 @@
+name: Kolaboreyt live check
+# Runs the live Kolaboreyt smoke test on GitHub's runners (open internet access).
+# On demand only: Actions → "Kolaboreyt live check" → Run workflow.
+# Needs repository secrets: KOLABOREYT_API_KEY (required), KOLABOREYT_WORKSPACE_ID (optional:
+# without it the run lists the workspaces the key can see).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "setup = key + board/columns only; smoke = full 9-step test with a throwaway item"
+        type: choice
+        options: [smoke, setup]
+        default: smoke
+      keep:
+        description: "Keep the smoke-test item instead of archiving it"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Kolaboreyt live check
+        env:
+          KOLABOREYT_API_KEY: ${{ secrets.KOLABOREYT_API_KEY }}
+          KOLABOREYT_WORKSPACE_ID: ${{ secrets.KOLABOREYT_WORKSPACE_ID }}
+          NODE_ENV: test
+        run: |
+          if [ -z "$KOLABOREYT_API_KEY" ]; then
+            echo "::error::Add the KOLABOREYT_API_KEY repository secret (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          ARGS=""
+          [ "${{ inputs.mode }}" = "smoke" ] && ARGS="--smoke"
+          [ "${{ inputs.keep }}" = "true" ] && ARGS="$ARGS --keep"
+          npm run kolaboreyt:check -- $ARGS

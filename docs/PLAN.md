@@ -1,6 +1,6 @@
 # Attentively v2.0: ChatGPT App Build Plan
 
-> **Naming:** this project was called "Ringer" until v2.0 and is now **Attentively v2.0** (repo being renamed `ringring` → `attentively`). It is separate from the developer's existing inbound app (`Simply-Expanding/attentively`), which this project does not change.
+> **Naming:** this project was called "Ringer" until v2.0 and is now **Attentively v2.0** (repo renamed `ringring` → `zealandhatchjr-max/attentively_v2.0`). It is separate from the developer's existing inbound app (`Simply-Expanding/attentively`), which this project does not change.
 
 Status: Draft plan, building on the Attentively PRD (Draft for product and engineering review)
 Launch surface: **ChatGPT app** (Apps SDK / MCP). Grok and Claude connectors reuse the same MCP server later.

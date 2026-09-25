@@ -5,87 +5,8 @@ import type { Db } from "../src/db/index.js";
 import { syncBoard } from "../src/orchestrator/board.js";
 import { advanceRun, approvePlan, pollBoardResolved } from "../src/orchestrator/runner.js";
 import { KolaboreytBoard } from "../src/providers/kolaboreyt.js";
+import { FakeKolaboreyt } from "./fakes/kolaboreyt.js";
 import { makeCtx, planTyreRun } from "./helpers.js";
-
-/** In-memory stand-in for Kolaboreyt's Platform API (just what Attentively uses). */
-class FakeKolaboreyt {
-  requests: Array<{ headers: Record<string, string>; query: string; variables: Record<string, any> }> = [];
-  boards: Array<{ id: string; name: string; workspace_id: string }> = [];
-  columns: Array<{ id: string; title: string; type: string; owner_kind: string }> = [];
-  items = new Map<string, { name: string; parent: string | null }>();
-  cells = new Map<string, string>(); // `${item}:${col}` -> value_json
-  updates: Array<{ item: string; body: string }> = [];
-  failNext: number | null = null; // HTTP status to return once
-  down = false;
-  private n = 0;
-  private id = (p: string) => `${p}_${++this.n}`;
-
-  fetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    if (this.down) throw new Error("connect ECONNREFUSED");
-    const headers = Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), v]));
-    const { query, variables } = JSON.parse(String(init?.body));
-    this.requests.push({ headers, query, variables });
-    if (this.failNext) {
-      const status = this.failNext;
-      this.failNext = null;
-      return new Response(JSON.stringify({ errors: [{ message: "slow down", extensions: { code: "RATE_LIMIT_EXCEEDED" } }] }), {
-        status,
-        headers: { "retry-after": "0" },
-      });
-    }
-    return Response.json({ data: this.exec(query, variables) });
-  };
-
-  private exec(q: string, v: Record<string, any>): unknown {
-    if (q.includes("create_board")) {
-      const b = { id: this.id("brd"), name: v.name, workspace_id: v.ws };
-      this.boards.push(b);
-      return { create_board: { id: b.id } };
-    }
-    if (q.includes("create_column")) {
-      const c = { id: this.id("col"), title: v.t, type: v.type, owner_kind: v.layer };
-      this.columns.push(c);
-      return { create_column: c };
-    }
-    if (q.includes("create_item")) {
-      const id = this.id("itm");
-      this.items.set(id, { name: v.n, parent: null });
-      return { create_item: { id } };
-    }
-    if (q.includes("create_subitem")) {
-      const id = this.id("sub");
-      this.items.set(id, { name: v.n, parent: v.p });
-      return { create_subitem: { id } };
-    }
-    if (q.includes("change_column_value")) {
-      this.cells.set(`${v.i}:${v.c}`, v.v);
-      return { change_column_value: { column_id: v.c } };
-    }
-    if (q.includes("add_item_update")) {
-      this.updates.push({ item: v.i, body: v.body });
-      return { add_item_update: { id: this.id("upd") } };
-    }
-    if (q.includes("items(ids")) {
-      return {
-        items: [{ column_values: [...this.cells].filter(([k]) => k.startsWith(`${v.i}:`)).map(([k, val]) => ({ column_id: k.split(":")[1], value_json: val })) }],
-      };
-    }
-    if (q.includes("boards(ids")) {
-      return { boards: this.boards.filter((b) => b.id === v.b).map(() => ({ groups: [{ id: "grp_1", title: "Quotes" }], columns: this.columns })) };
-    }
-    if (q.includes("boards(")) return { boards: this.boards };
-    throw new Error(`unhandled: ${q}`);
-  }
-
-  mutations() {
-    return this.requests.filter((r) => r.query.trimStart().startsWith("mutation"));
-  }
-  cellsOf(itemId: string, title: string, layer = "item") {
-    const col = this.columns.find((c) => c.title === title && c.owner_kind === layer)!;
-    const raw = this.cells.get(`${itemId}:${col.id}`);
-    return raw === undefined ? undefined : JSON.parse(raw);
-  }
-}
 
 let db: Db | undefined;
 afterEach(async () => {
@@ -151,10 +72,11 @@ describe("Kolaboreyt board adapter", () => {
     expect(t.fake.cellsOf(runItem, "Status")).toEqual({ label: "Complete" });
     expect(t.fake.cellsOf(runItem, "Best price")).toBe(620);
     expect(t.fake.cellsOf(runItem, "Best vendor")).toBe("Varsity Tyrepower");
-    expect(String(t.fake.cellsOf(runItem, "Report"))).toMatch(/\/b\//);
+    expect(t.fake.cellsOf(runItem, "Report").href).toMatch(/\/b\//);
 
     const robina = subs.find(([, i]) => i.name === "Robina Tyre & Auto")![0];
     expect(t.fake.cellsOf(robina, "Call status", "subitem")).toEqual({ label: "Done" });
+    expect(t.fake.cellsOf(robina, "Phone", "subitem")).toEqual({ number: "+61755550101" });
     expect(t.fake.cellsOf(robina, "Price", "subitem")).toBe(660);
     expect(t.fake.cellsOf(robina, "Contact", "subitem")).toBe("Dave");
 

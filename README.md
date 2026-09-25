@@ -14,7 +14,7 @@ The assistant decides by itself when Attentively would help. The user approves b
 ```bash
 npm install
 npm run simulate   # a full Gold Coast tyre run against simulated shops
-npm test           # 54 tests: approval gate, dialling, Needs-you, negotiation, persona, Kolaboreyt, inbound, HTTP/MCP
+npm test           # 62 tests, incl. Kolaboreyt API contract tests against the documented schema
 npm run dev        # server on http://localhost:8787 (MCP endpoint: /mcp)
 ```
 
@@ -90,6 +90,23 @@ Quote runs go on one **"Attentively: Quotes"** board, with **one item per reques
 - Setting the request's Status to **Resolved** in Kolaboreyt stops follow-ups.
 
 The database remains the system of record, and board sync is idempotent. See `src/providers/kolaboreyt.ts`.
+
+### Kolaboreyt: live check
+
+Every request Attentively sends is checked in the tests against the **Platform API schema from Kolaboreyt's docs** (`test/fixtures/kolaboreyt-schema.graphql`). The live check proves it works against the real service:
+
+```bash
+npm run kolaboreyt:check                  # steps 1–4: key, access, workspace, board + columns
+npm run kolaboreyt:check -- --smoke       # all 9 steps: writes a throwaway item, reads it back, checks Resolved + idempotency, archives it
+npm run kolaboreyt:check -- --smoke --keep  # keep the test item to look at
+```
+
+Each step prints PASS or FAIL. A FAIL comes with a plain-English fix: a missing key permission, the wrong workspace, the board quota, or a network block.
+
+You can run it in three places:
+1. **Your own computer:** put `KOLABOREYT_API_KEY` (and `KOLABOREYT_WORKSPACE_ID`) in `.env`.
+2. **GitHub Actions:** add the `KOLABOREYT_API_KEY` repository secret (optionally `KOLABOREYT_WORKSPACE_ID`), then Actions → **Kolaboreyt live check** → Run workflow. It works even when a dev environment's network is locked down.
+3. **A Claude Code cloud session:** only if `api.kolaboreyt.com` is allowed in the environment's network settings.
 
 ## Secrets
 

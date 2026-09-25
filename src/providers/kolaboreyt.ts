@@ -23,6 +23,8 @@ export class KolaboreytError extends Error {
     public code: string,
     message: string,
     public status?: number,
+    /** Extra fields from `extensions`, e.g. required_scope, required_permission, quota. */
+    public details: Record<string, unknown> = {},
   ) {
     super(`${code}: ${message}`);
   }
@@ -41,6 +43,8 @@ export interface KolaboreytClientOptions {
 export class KolaboreytClient {
   private last = 0;
   private queue: Promise<unknown> = Promise.resolve();
+  /** Headers of the most recent response (e.g. Idempotency-Replayed, RateLimit). */
+  lastHeaders: Headers | null = null;
   private url: string;
   private sleep: (ms: number) => Promise<void>;
 
@@ -88,7 +92,11 @@ export class KolaboreytClient {
         },
         body: JSON.stringify({ query, variables }),
       });
-      const body = (await res.json().catch(() => ({}))) as { data?: T; errors?: Array<{ message: string; extensions?: { code?: string; status_code?: number } }> };
+      this.lastHeaders = res.headers;
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: T;
+        errors?: Array<{ message: string; extensions?: { code?: string; status_code?: number } & Record<string, unknown> }>;
+      };
       const code = body.errors?.[0]?.extensions?.code ?? (res.ok ? undefined : `HTTP_${res.status}`);
 
       // Retry what the API says is retryable, reusing the same Idempotency-Key.
@@ -103,9 +111,16 @@ export class KolaboreytClient {
       }
       if (body.errors?.length) {
         const e = body.errors[0];
-        throw new KolaboreytError(e.extensions?.code ?? "GRAPHQL_ERROR", e.message, e.extensions?.status_code ?? res.status);
+        const { code: c, status_code, ...details } = e.extensions ?? {};
+        throw new KolaboreytError(c ?? "GRAPHQL_ERROR", e.message, status_code ?? res.status, details);
       }
-      if (!res.ok) throw new KolaboreytError(code ?? "HTTP_ERROR", `Kolaboreyt request failed (${res.status})`, res.status);
+      if (!res.ok) {
+        // Kolaboreyt's own errors always carry a GraphQL `errors` array. A bare non-2xx
+        // (often 403/407) means something in between — usually a network proxy — refused it.
+        if (res.status === 403 || res.status === 407)
+          throw new KolaboreytError("NETWORK_BLOCKED", `The connection was refused before reaching Kolaboreyt (HTTP ${res.status})`, res.status);
+        throw new KolaboreytError(code ?? "HTTP_ERROR", `Kolaboreyt request failed (HTTP ${res.status})`, res.status);
+      }
       return body.data as T;
     }
   }
@@ -262,19 +277,52 @@ export class KolaboreytBoard implements BoardProvider {
       throw new KolaboreytError("NO_GROUP", `Board "${this.o.boardName}" has no group. Add one in Kolaboreyt (the API can't create groups).`);
 
     const columns = new Map<string, { id: string; spec: ColumnSpec }>();
+    let probeItem: string | null = null;
+    const createColumn = (spec: ColumnSpec) =>
+      c.mutate<{ create_column: { id: string; title: string; type: string; owner_kind: string } }>(
+        `mutation($b: ID!, $t: String!, $type: String!, $layer: String!) { create_column(board_id: $b, title: $t, column_type: $type, owner_kind: $layer) { id title type owner_kind } }`,
+        { b: boardId, t: spec.title, type: spec.type, layer: spec.layer },
+        `attentively:create-column:${boardId}:${spec.layer}:${spec.key}`,
+      );
     for (const spec of [...RUN_COLUMNS, ...VENDOR_COLUMNS]) {
       let col = board.columns.find((x) => x.title === spec.title && x.owner_kind === spec.layer);
       if (!col) {
-        const { create_column } = await c.mutate<{ create_column: { id: string; title: string; type: string; owner_kind: string } }>(
-          `mutation($b: ID!, $t: String!, $type: String!, $layer: String!) { create_column(board_id: $b, title: $t, column_type: $type, owner_kind: $layer) { id title type owner_kind } }`,
-          { b: boardId, t: spec.title, type: spec.type, layer: spec.layer },
-          `attentively:create-column:${boardId}:${spec.layer}:${spec.key}`,
-        );
-        col = create_column;
+        try {
+          col = (await createColumn(spec)).create_column;
+        } catch (e) {
+          // If the board refuses subitem columns until a subitem exists, create a
+          // throwaway item + subitem to seed the subitem layer, retry, then archive it.
+          if (spec.layer !== "subitem" || probeItem || !(e instanceof KolaboreytError)) throw e;
+          probeItem = await this.createProbe(boardId, group.id);
+          col = (await createColumn(spec)).create_column;
+        }
       }
       columns.set(spec.key, { id: col.id, spec });
     }
+    if (probeItem) {
+      await c.mutate(`mutation($b: ID!, $i: ID!) { archive_item(board_id: $b, item_id: $i) { id state } }`, { b: boardId, i: probeItem }, `attentively:archive-probe:${probeItem}`);
+    }
     return { boardId, groupId: group.id, columns };
+  }
+
+  private async createProbe(boardId: string, groupId: string): Promise<string> {
+    const { create_item } = await this.client.mutate<{ create_item: { id: string } }>(
+      `mutation($b: ID!, $g: ID!, $n: String!) { create_item(board_id: $b, group_id: $g, item_name: $n) { id } }`,
+      { b: boardId, g: groupId, n: "Attentively set-up (safe to ignore)" },
+      `attentively:probe:${boardId}`,
+    );
+    await this.client.mutate(
+      `mutation($p: ID!, $n: String!) { create_subitem(parent_item_id: $p, item_name: $n) { id } }`,
+      { p: create_item.id, n: "Set-up" },
+      `attentively:probe-sub:${create_item.id}`,
+    );
+    return create_item.id;
+  }
+
+  /** Archive a run's item (and its vendor subitems). Used to clean up smoke tests. */
+  async archiveRun(ref: string): Promise<void> {
+    const s = await this.ensureSchema();
+    await this.client.mutate(`mutation($b: ID!, $i: ID!) { archive_item(board_id: $b, item_id: $i) { id state } }`, { b: s.boardId, i: ref }, `attentively:archive:${ref}`);
   }
 
   /** Write a cell only if its value changed since we last wrote it. */
