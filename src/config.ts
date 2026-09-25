@@ -62,6 +62,8 @@ const EnvSchema = z.object({
   // Google Places verification: re-check a vendor if its last check is older than this.
   VERIFY_MAX_AGE_DAYS: z.coerce.number().int().positive().default(14),
   PLACES_LOOKUPS_PER_USER_PER_DAY: z.coerce.number().int().positive().default(40),
+  // Say "This call is transcribed." in opening lines (pending legal advice).
+  TRANSCRIPTION_NOTICE: z.enum(["on", "off"]).default("off"),
   WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   CALL_POLL_SECONDS: z.coerce.number().int().positive().default(15),
 });

@@ -23,6 +23,9 @@ export interface UserRow {
   assistant_email: string | null;
   minutes_balance_seconds: number;
   share_data_opt_in: boolean;
+  assistant_name: string;
+  owner_name: string | null;
+  voice_id: string | null;
 }
 
 export interface VendorRow {
@@ -213,6 +216,22 @@ export async function setAssistantIdentity(
     `UPDATE users SET assistant_number=$2, voice_phone_number_id=$3, assistant_email=$4 WHERE id=$1`,
     [userId, a.number, a.voice_phone_number_id ?? null, a.email],
   );
+}
+
+export async function setPersona(
+  db: Db,
+  userId: string,
+  p: { assistant_name?: string; owner_name?: string; voice_id?: string | null },
+) {
+  await db.query(
+    `UPDATE users SET assistant_name=COALESCE($2,assistant_name), owner_name=COALESCE($3,owner_name),
+       voice_id=CASE WHEN $5 THEN $4 ELSE voice_id END WHERE id=$1`,
+    [userId, p.assistant_name ?? null, p.owner_name ?? null, p.voice_id ?? null, p.voice_id !== undefined],
+  );
+}
+
+export async function userByEmail(db: Db, email: string): Promise<UserRow | null> {
+  return (await db.query<UserRow>(`SELECT * FROM users WHERE lower(email)=lower($1)`, [email]))[0] ?? null;
 }
 
 export async function chargeMinutes(db: Db, userId: string, seconds: number, reason: string, callId?: string) {

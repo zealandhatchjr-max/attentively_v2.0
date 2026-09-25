@@ -3,7 +3,8 @@ import { loadConfig } from "../src/config.js";
 import { isOpen, nextOpening } from "../src/core/hours.js";
 import { signLink, verifyLink } from "../src/core/links.js";
 import { rank } from "../src/core/ranking.js";
-import { checkNegotiation } from "../src/orchestrator/script.js";
+import { buildCallPrompt, checkNegotiation } from "../src/orchestrator/script.js";
+import { personaOf } from "../src/core/persona.js";
 import { makeLogger } from "../src/server.js";
 
 const weekdays = [1, 2, 3, 4, 5].map((day) => ({ day, open: "08:00", close: "17:00" }));
@@ -135,5 +136,46 @@ describe("config and secrets", () => {
     }
     expect(lines[0]).not.toContain("supersecret");
     expect(lines[0]).toContain("[redacted]");
+  });
+});
+
+describe("voice agent persona", () => {
+  const brief = {
+    need: { item: "tyres", quantity: 4, specs: { size: "205/55R16", load_speed_index: "91V", fitted: true } },
+    questions: [],
+    resolved_answers: [],
+    learned_facts: [],
+    allow_negotiation: true,
+  };
+  const zealand = personaOf({ assistant_name: "Maddie", owner_name: "Zealand", voice_id: null });
+
+  it("opens with the user's persona and owner name", () => {
+    const { firstMessage } = buildCallPrompt({ category: "tyres", vendorName: "Robina Tyre & Auto", brief, leverage: null, persona: zealand, transcriptionNotice: false });
+    expect(firstMessage).toBe(
+      "Hi, I'm Maddie, a virtual receptionist calling on behalf of Zealand. I was wondering if you could help me with a quote for 4 x 205/55R16 91V tyres.",
+    );
+  });
+
+  it("uses a different name the user chose, and a neutral default without an owner", () => {
+    const { firstMessage } = buildCallPrompt({ category: "tyres", vendorName: "X", brief, leverage: null, persona: personaOf({ assistant_name: "Sam" }), transcriptionNotice: false });
+    expect(firstMessage).toMatch(/^Hi, I'm Sam, a virtual receptionist calling on behalf of a customer\./);
+  });
+
+  it("adds the transcription notice only when switched on", () => {
+    const on = buildCallPrompt({ category: "tyres", vendorName: "X", brief, leverage: null, persona: zealand, transcriptionNotice: true });
+    expect(on.firstMessage).toContain("This call is transcribed.");
+  });
+
+  it("always admits being an AI and shares only the first name", () => {
+    const { systemPrompt } = buildCallPrompt({ category: "tyres", vendorName: "X", brief, leverage: null, persona: zealand, transcriptionNotice: false });
+    expect(systemPrompt).toMatch(/always say plainly that you're an AI assistant/);
+    expect(systemPrompt).toMatch(/Never claim or imply you're human/);
+    expect(systemPrompt).toMatch(/first name "Zealand"/);
+    expect(systemPrompt).toMatch(/Never share surnames, phone numbers/);
+  });
+
+  it("uses the persona on call-backs", () => {
+    const { firstMessage } = buildCallPrompt({ category: "tyres", vendorName: "X", brief, leverage: null, persona: zealand, transcriptionNotice: false, isCallback: true });
+    expect(firstMessage).toBe("Hi, it's Maddie, Zealand's virtual receptionist, calling back about the 4 x 205/55R16 91V tyres enquiry from earlier.");
   });
 });

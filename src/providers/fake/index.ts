@@ -43,6 +43,7 @@ export class FakeVoice implements VoiceProvider {
       size: req.metadata.need_spec || "205/55R16 91V",
       leverage,
       answers: JSON.parse(req.metadata.answers || "[]"),
+      firstMessage: req.firstMessage,
     });
     simulatedExtractions.set(providerCallId, sim.extraction);
     this.calls.set(providerCallId, {

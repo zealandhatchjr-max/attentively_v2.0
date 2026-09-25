@@ -3,6 +3,7 @@ import { boardUrl, type Ctx } from "../core/context.js";
 import * as store from "../core/store.js";
 import { RunStatus, type TranscriptTurn } from "../core/types.js";
 import { syncBoard } from "../orchestrator/board.js";
+import { describeNeed, honestyRules, onBehalfOf, personaOf, receptionistTitle, type Persona } from "../core/persona.js";
 import { sendReport } from "../orchestrator/report.js";
 
 /**
@@ -20,20 +21,26 @@ export interface InboundCallContext {
   dynamicVariables: Record<string, string>;
 }
 
-const RECEPTIONIST = `You are a polite, neutral, professional AI assistant answering a phone line on behalf of a customer.
-Say you're an AI assistant and that the call is transcribed. Never share the customer's name, number or address.
-Take a message: who is calling, what it's about, and how to reach them. Don't make commitments. Keep it brief.`;
+function receptionistPrompt(p: Persona): string {
+  return `You are ${p.assistant}, ${receptionistTitle(p)}: a polite, neutral, professional AI voice agent answering this phone line on behalf of ${onBehalfOf(p)}.
+${honestyRules(p)}
+Take a message: who is calling, what it's about, and how to reach them. Confirm the details back. Don't make commitments. Keep it brief.`;
+}
+
+const notice = (ctx: Ctx) => (ctx.cfg.TRANSCRIPTION_NOTICE === "on" ? " This call is transcribed." : "");
 
 export async function inboundCallStarted(
   ctx: Ctx,
   input: { agentNumber: string; callerNumber: string },
 ): Promise<InboundCallContext> {
   const user = await store.userByAssistantNumber(ctx.db, input.agentNumber);
+  const p = personaOf(user ?? {});
+  const RECEPTIONIST = receptionistPrompt(p);
   const base = { user_id: user?.id ?? null, vendor_id: null, run_id: null };
   const receptionist = {
     ...base,
     systemPrompt: RECEPTIONIST,
-    firstMessage: "Hi, you've reached an AI assistant. This call is transcribed. How can I help?",
+    firstMessage: `Hi, you've reached ${p.assistant}, ${receptionistTitle(p)}.${notice(ctx)} How can I help?`,
     dynamicVariables: {},
   };
   if (!user) return receptionist;
@@ -52,8 +59,8 @@ export async function inboundCallStarted(
       ...base,
       vendor_id: vendor.id,
       run_id: run.id,
-      systemPrompt: `${RECEPTIONIST}\nThis is ${vendor.name} calling back about "${run.request.need.item}". The customer has already sorted this out. Thank them warmly, say no further information is needed, and end the call. Don't take new details.`,
-      firstMessage: `Hi, thanks for calling back. I'm the AI assistant that called about the ${run.request.need.item}.`,
+      systemPrompt: `${RECEPTIONIST}\nThis is ${vendor.name} calling back about "${run.request.need.item}". ${onBehalfOf(p)} has already sorted this out. Thank them warmly, say no further information is needed, and end the call. Don't take new details.`,
+      firstMessage: `Hi, it's ${p.assistant}, ${receptionistTitle(p)}. Thanks for calling back about the ${describeNeed(run.request.need)}.`,
       dynamicVariables: { run_id: run.id, vendor_id: vendor.id },
     };
   }
@@ -70,12 +77,12 @@ export async function inboundCallStarted(
     vendor_id: vendor.id,
     run_id: run.id,
     systemPrompt: `${RECEPTIONIST}
-This caller is ${vendor.name}, calling back about the customer's enquiry: "${run.request.text}" (${cat.label}).
-Customer's need: ${JSON.stringify(run.request.need)}
+This caller is ${vendor.name}, calling back about ${onBehalfOf(p)}'s enquiry: "${run.request.text}" (${cat.label}).
+What ${onBehalfOf(p)} needs: ${JSON.stringify(run.request.need)}
 ${notes.join("\n")}
-${others.length ? `If they're calling about something else, the customer also asked about: ${others.join(", ")}. Ask which one.` : ""}
+${others.length ? `If they're calling about something else, ${onBehalfOf(p)} also asked about: ${others.join(", ")}. Ask which one.` : ""}
 Capture any new price, stock, date, promo and validity details precisely. You're gathering information only: no bookings or commitments.`,
-    firstMessage: `Hi${last?.contact_name ? ` ${last.contact_name}` : ""}, thanks for calling back. I'm the AI assistant that called about the ${run.request.need.item}. This call is transcribed.`,
+    firstMessage: `Hi${last?.contact_name ? ` ${last.contact_name}` : ""}, it's ${p.assistant}, ${receptionistTitle(p)}. Thanks for calling back about the ${describeNeed(run.request.need)}.${notice(ctx)}`,
     dynamicVariables: { run_id: run.id, vendor_id: vendor.id },
   };
 }

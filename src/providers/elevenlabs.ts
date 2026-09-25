@@ -40,6 +40,8 @@ export class ElevenLabsVoice implements VoiceProvider {
           conversation_initiation_client_data: {
             conversation_config_override: {
               agent: { prompt: { prompt: req.systemPrompt }, first_message: req.firstMessage, language: "en" },
+              // The agent must allow voice overrides (PHASE 0 VERIFY).
+              ...(req.voiceId ? { tts: { voice_id: req.voiceId } } : {}),
             },
             dynamic_variables: req.metadata,
           },

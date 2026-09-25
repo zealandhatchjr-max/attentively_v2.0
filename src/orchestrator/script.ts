@@ -1,4 +1,5 @@
 import { getCategory, questionsFor } from "../categories/index.js";
+import { describeNeed, honestyRules, onBehalfOf, receptionistTitle, type Persona } from "../core/persona.js";
 import type { Brief, TranscriptTurn } from "../core/types.js";
 
 export interface Leverage {
@@ -7,8 +8,16 @@ export interface Leverage {
   observation_evidence: string;
 }
 
-export const DISCLOSURE =
-  "Hi, I'm an AI assistant calling on behalf of a customer. This call is transcribed.";
+const TRANSCRIBED = " This call is transcribed.";
+
+/** The opening line of a first call, e.g. "Hi, I'm Maddie, a virtual receptionist calling on behalf of Zealand. …" */
+export function openingLine(p: Persona, need: Brief["need"], opts: { transcriptionNotice: boolean }): string {
+  return (
+    `Hi, I'm ${p.assistant}, a virtual receptionist calling on behalf of ${onBehalfOf(p)}.` +
+    (opts.transcriptionNotice ? TRANSCRIBED : "") +
+    ` I was wondering if you could help me with a quote for ${describeNeed(need)}.`
+  );
+}
 
 /**
  * Per-call system prompt for the voice agent. Built from the latest approved brief;
@@ -19,8 +28,12 @@ export function buildCallPrompt(input: {
   vendorName: string;
   brief: Brief;
   leverage: Leverage | null;
+  persona: Persona;
+  transcriptionNotice: boolean;
   isCallback?: boolean;
 }): { systemPrompt: string; firstMessage: string } {
+  const p = input.persona;
+  const who = onBehalfOf(p);
   const cat = getCategory(input.category);
   const qs = questionsFor(cat, input.brief);
   const need = input.brief.need;
@@ -37,19 +50,19 @@ export function buildCallPrompt(input: {
 4. If they won't move, accept it politely.`
       : `NEGOTIATION: Do not mention other businesses or their prices on this call.`;
 
-  const systemPrompt = `You are a polite, neutral, professional assistant phoning ${input.vendorName}, a local business, on behalf of a customer.
-You are gathering information only: you cannot book, order, hold stock, pay, or commit the customer to anything.
+  const systemPrompt = `You are ${p.assistant}, ${receptionistTitle(p)}: a polite, neutral, professional AI voice agent phoning ${input.vendorName}, a local business, on behalf of ${who}.
+You are gathering information only: you cannot book, order, hold stock, pay, or commit ${who} to anything.
 
 IDENTITY
-- Your opening line always says you are an AI assistant calling for a customer and that the call is transcribed.
-- Never give the customer's name, phone number or address. If asked for a callback number, say: "You can reach me on this number, it's my direct line." If asked for an email, give the assistant email in {{assistant_email}}.
-- If asked who the customer is: "I'm not able to share their details, but I can pass anything on."
+${honestyRules(p)}
+- If asked for a callback number, say: "You can reach me on this number, it's my direct line." If asked for an email, give the assistant email in {{assistant_email}}.
+- If asked for more about who you're calling for: "I'm not able to share their details, but I can pass anything on."
 
-WHAT THE CUSTOMER NEEDS
+WHAT ${who.toUpperCase()} NEEDS
 - Item: ${need.item}${need.quantity ? ` (quantity ${need.quantity})` : ""}
 - Specs: ${JSON.stringify(need.specs)}
 ${need.required_by ? `- Needed by: ${need.required_by}\n` : ""}${need.preferences?.length ? `- Preferences: ${need.preferences.join("; ")}\n` : ""}${need.notes ? `- Notes: ${need.notes}\n` : ""}
-CUSTOMER'S ANSWERS SO FAR
+ANSWERS FROM ${who.toUpperCase()} SO FAR
 ${answers}
 
 THINGS LEARNED FROM EARLIER CALLS
@@ -63,13 +76,14 @@ ${qs.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 ${negotiation}
 
 RULES
-- If they ask something you can't answer from the information above, do NOT guess. Say you'll check with the customer and call back, then wrap up politely.
+- If they ask something you can't answer from the information above, do NOT guess. Say you'll check with ${who} and call back, then wrap up politely.
 - If they decline, are busy, or ask not to be called again, apologise, confirm you won't call again, and end the call.
-- Keep it short and friendly. End by thanking them and saying the customer will be in touch if they'd like to go ahead.`;
+- Keep it short and friendly. End by thanking them and saying ${who} will be in touch if they'd like to go ahead.`;
 
   const firstMessage = input.isCallback
-    ? `${DISCLOSURE} I'm calling back about the ${need.item} enquiry from earlier.`
-    : `${DISCLOSURE} Is this ${input.vendorName}?`;
+    ? `Hi, it's ${p.assistant}, ${receptionistTitle(p)}, calling back about the ${describeNeed(need)} enquiry from earlier.` +
+      (input.transcriptionNotice ? TRANSCRIBED : "")
+    : openingLine(p, need, { transcriptionNotice: input.transcriptionNotice });
 
   return { systemPrompt, firstMessage };
 }

@@ -200,3 +200,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS business_status TEXT;   -- OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS source_url TEXT;       -- where the assistant found it
+
+-- Voice agent persona, chosen per user (self-serve onboarding is a later phase).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS assistant_name TEXT NOT NULL DEFAULT 'Maddie';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_id TEXT;

@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "simulate": "tsx src/sim/simulate.ts",
-    "create-user": "tsx src/admin/create-user.ts"
+    "create-user": "tsx src/admin/create-user.ts",
+    "set-persona": "tsx src/admin/set-persona.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

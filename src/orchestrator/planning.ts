@@ -2,7 +2,8 @@ import { getCategory, guessCategory, listCategories, missingSpecs } from "../cat
 import { approvalUrl, boardUrl, type Ctx } from "../core/context.js";
 import { isOpen, nextOpening } from "../core/hours.js";
 import * as store from "../core/store.js";
-import { DISCLOSURE } from "./script.js";
+import { openingLine } from "./script.js";
+import { personaOf } from "../core/persona.js";
 import { AttentivelyError, RunStatus, VendorItemStatus, type Location, type Need, type Plan, type PlanVendor } from "../core/types.js";
 
 /* ---------- check_local_inquiry: read-only, no auth ---------- */
@@ -302,7 +303,9 @@ export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
     allow_negotiation: input.allow_negotiation ?? true,
     estimated_minutes: estimated,
     notify_email: input.notify_email ?? user.email,
-    disclosure: `${DISCLOSURE} Your details are never shared: vendors get your assistant's number and email.`,
+    disclosure:
+      `Calls open: "${openingLine(personaOf(user), input.need, { transcriptionNotice: cfg.TRANSCRIPTION_NOTICE === "on" })}" ` +
+      `${personaOf(user).assistant} always says it's an AI if asked. Only your first name is shared: vendors get your assistant's number and email, never your own.`,
   };
   const run = await store.createRun(db, { user_id: userId, host: input.host ?? "chatgpt", category: cat.id, text: input.request_text, plan });
   return planSummary(ctx, run.id, notes);

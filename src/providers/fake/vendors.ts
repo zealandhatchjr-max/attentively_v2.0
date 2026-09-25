@@ -111,13 +111,13 @@ const isoIn = (days: number) => new Date(Date.now() + days * 86400_000).toISOStr
 /** Build a transcript + ground-truth extraction for a simulated call. */
 export function simulateConversation(
   persona: Persona,
-  ctx: { qty: number; size: string; leverage: { vendor: string; total: number } | null; answers: string[] },
+  ctx: { qty: number; size: string; leverage: { vendor: string; total: number } | null; answers: string[]; firstMessage?: string },
 ): { transcript: TranscriptTurn[]; extraction: Extraction; durationSec: number } {
   const t: TranscriptTurn[] = [];
   const agent = (text: string) => t.push({ role: "agent", text });
   const vendor = (text: string) => t.push({ role: "vendor", text });
   const name = persona.place.name;
-  agent(`Hi, I'm an AI assistant calling on behalf of a customer. This call is transcribed. Is this ${name}?`);
+  agent(ctx.firstMessage ?? `Hi, I'm Maddie, a virtual receptionist calling on behalf of a customer. I was wondering if you could help me with a quote.`);
 
   if (persona.behaviour === "declines_dnc") {
     vendor("We don't deal with robots. Take us off your list and don't call again.");
@@ -136,7 +136,7 @@ export function simulateConversation(
     };
   }
 
-  vendor(`Yeah, ${persona.contact ?? "speaking"}. What can I do for you?`);
+  vendor(`Sure, ${persona.contact ? `${persona.contact} here` : "no worries"}. What are you after exactly?`);
   agent(`I'm after ${ctx.qty} x ${ctx.size} tyres, supplied and fitted. Do you have those in stock, and what would the total be?`);
 
   if (persona.behaviour === "alternative_only") {

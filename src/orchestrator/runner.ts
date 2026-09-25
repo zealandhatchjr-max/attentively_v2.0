@@ -6,6 +6,7 @@ import { RunStatus, VendorItemStatus, type Extraction, type TranscriptTurn } fro
 import type { ProviderCallState } from "../providers/types.js";
 import { ensureBoard, syncBoard } from "./board.js";
 import { sendReport } from "./report.js";
+import { personaOf } from "../core/persona.js";
 import { buildCallPrompt, checkNegotiation, type Leverage } from "./script.js";
 
 const LEASE_SECONDS = 120;
@@ -200,6 +201,8 @@ async function dial(ctx: Ctx, runId: string, vendorId: string): Promise<void> {
     vendorName: item.vendor.name,
     brief,
     leverage,
+    persona: personaOf(user),
+    transcriptionNotice: ctx.cfg.TRANSCRIPTION_NOTICE === "on",
     isCallback: priorAttempts > 0,
   });
   try {
@@ -209,6 +212,7 @@ async function dial(ctx: Ctx, runId: string, vendorId: string): Promise<void> {
       fromPhoneNumberId: user.voice_phone_number_id,
       systemPrompt,
       firstMessage,
+      voiceId: personaOf(user).voiceId,
       metadata: {
         run_id: runId,
         vendor_id: vendorId,

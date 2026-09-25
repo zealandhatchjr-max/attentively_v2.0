@@ -8,7 +8,16 @@ import * as store from "./store.js";
  */
 export async function onboardUser(
   ctx: Ctx,
-  input: { email: string; display_name?: string; minutes?: number; share_data_opt_in?: boolean },
+  input: {
+    email: string;
+    display_name?: string;
+    minutes?: number;
+    share_data_opt_in?: boolean;
+    /** Voice agent persona. Chosen by the user in a later-phase onboarding flow; set by CLI for now. */
+    assistant_name?: string;
+    owner_name?: string;
+    voice_id?: string;
+  },
 ) {
   const { user, apiToken } = await store.createUser(ctx.db, {
     email: input.email,
@@ -19,6 +28,7 @@ export async function onboardUser(
   const { number, voicePhoneNumberId } = await ctx.providers.numbers.provisionAssistantNumber(user.id);
   const assistantEmail = `a-${randomBytes(4).toString("hex")}@${ctx.cfg.ASSISTANT_EMAIL_DOMAIN}`;
   await store.setAssistantIdentity(ctx.db, user.id, { number, voice_phone_number_id: voicePhoneNumberId, email: assistantEmail });
+  await store.setPersona(ctx.db, user.id, { assistant_name: input.assistant_name, owner_name: input.owner_name, voice_id: input.voice_id });
   await store.audit(ctx.db, { user_id: user.id, actor: "system", type: "user.onboarded" });
   return { user: (await store.getUser(ctx.db, user.id))!, apiToken };
 }

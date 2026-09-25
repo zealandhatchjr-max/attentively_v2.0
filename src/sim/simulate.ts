@@ -40,7 +40,7 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
   };
   const log = opts.quiet ? (_: string) => {} : say;
 
-  const { user } = await onboardUser(ctx, { email: "founder@example.com", share_data_opt_in: true, minutes: 120 });
+  const { user } = await onboardUser(ctx, { email: "founder@example.com", share_data_opt_in: true, minutes: 120, owner_name: "Zealand", assistant_name: "Maddie" });
   log(`User onboarded with a hidden assistant number and ${Math.floor(user.minutes_balance_seconds / 60)} minutes`);
 
   log("ChatGPT notices a local-buy situation and calls check_local_inquiry (no auth, no cost)");
@@ -86,6 +86,11 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
     if (run.status === RunStatus.Completed) break;
   }
 
+  const firstCall = (await store.runCalls(db, plan.run_id)).find((c) => Array.isArray(c.transcript) && (c.transcript as unknown[]).length);
+  if (!opts.quiet && firstCall) {
+    log("How the first call opened:");
+    for (const t of (firstCall.transcript as Array<{ role: string; text: string }>).slice(0, 3)) console.log(`   ${t.role === "agent" ? "Maddie" : "Vendor"}: ${t.text}`);
+  }
   const view = await runView(ctx, plan.run_id);
   log("Run complete. Vendor board:");
   if (!opts.quiet) for (const v of view.vendors) console.log(`   - ${v.name}: ${v.status}${v.offers.length ? ` | ${v.offers.map((o) => `${o.kind}/${o.phase} $${o.total_price}`).join(", ")}` : ""}`);

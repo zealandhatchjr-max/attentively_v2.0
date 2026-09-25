@@ -12,6 +12,8 @@ export interface OutboundCallRequest {
   fromPhoneNumberId: string | null;
   systemPrompt: string;
   firstMessage: string;
+  /** Voice chosen by the user; null = the agent's default voice. */
+  voiceId?: string | null;
   metadata: Record<string, string>;
 }
 
