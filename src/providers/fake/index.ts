@@ -10,6 +10,7 @@ import type {
   PlaceResult,
   PlacesProvider,
   ProviderCallState,
+  RunHeader,
   VoiceProvider,
 } from "../types.js";
 import { PERSONAS, personaByPhone, simulateConversation } from "./vendors.js";
@@ -126,25 +127,31 @@ export class MemoryMailer implements Mailer {
 }
 
 /**
- * Local board: Attentively itself serves the board page (see http/pages.ts), so email
- * links work before Kolaboreyt is connected. Items are kept for inspection.
+ * Local board: Attentively itself serves the board page (see http/pages.ts), so
+ * everything works without Kolaboreyt. Items are kept in memory for inspection.
  */
 export class LocalBoard implements BoardProvider {
   name = "local";
   items = new Map<string, Map<string, BoardItem>>();
-  headers = new Map<string, Record<string, string>>();
-  constructor(private shareUrl: (runId: string) => string) {}
-  async createBoard(input: { runId: string; header: Record<string, string> }) {
-    const boardId = `local-${input.runId}`;
-    this.items.set(boardId, new Map());
-    this.headers.set(boardId, input.header);
-    return { boardId, shareUrl: this.shareUrl(input.runId) };
+  headers = new Map<string, RunHeader>();
+  notes = new Map<string, string>();
+  async createRun(runId: string, header: RunHeader) {
+    const ref = `local-${runId}`;
+    this.items.set(ref, new Map());
+    this.headers.set(ref, header);
+    return { ref };
   }
-  async upsertItem(boardId: string, item: BoardItem) {
-    if (!this.items.has(boardId)) this.items.set(boardId, new Map());
-    this.items.get(boardId)!.set(item.vendorId, item);
+  async updateRun(ref: string, _runId: string, header: RunHeader) {
+    this.headers.set(ref, header);
   }
-  async updateHeader(boardId: string, header: Record<string, string>) {
-    this.headers.set(boardId, { ...(this.headers.get(boardId) ?? {}), ...header });
+  async upsertVendor(ref: string, _runId: string, item: BoardItem) {
+    if (!this.items.has(ref)) this.items.set(ref, new Map());
+    this.items.get(ref)!.set(item.vendorId, item);
+  }
+  async postCallNote(_ref: string, _runId: string, _vendorId: string, callId: string, text: string) {
+    if (!this.notes.has(callId)) this.notes.set(callId, text);
+  }
+  async isResolved() {
+    return false; // the local board's Resolved button calls resolveRun directly
   }
 }

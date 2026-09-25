@@ -1,4 +1,5 @@
 import type { Config } from "../config.js";
+import type { Db } from "../db/index.js";
 import { AnthropicExtractor } from "./anthropic-extractor.js";
 import { ElevenLabsVoice } from "./elevenlabs.js";
 import { FakeExtractor, FakeNumbers, FakePlaces, FakeVoice, LocalBoard, MemoryMailer } from "./fake/index.js";
@@ -8,7 +9,7 @@ import { ResendMailer } from "./resend.js";
 import { TwilioNumbers } from "./twilio.js";
 import type { Providers } from "./types.js";
 
-export function buildProviders(cfg: Config): Providers {
+export function buildProviders(cfg: Config, db: Db): Providers {
   return {
     voice: cfg.VOICE_PROVIDER === "elevenlabs" ? new ElevenLabsVoice(cfg.ELEVENLABS_API_KEY!, cfg.ELEVENLABS_AGENT_ID!) : new FakeVoice(),
     numbers:
@@ -25,7 +26,14 @@ export function buildProviders(cfg: Config): Providers {
     mailer: cfg.MAIL_PROVIDER === "resend" ? new ResendMailer(cfg.EMAIL_PROVIDER_API_KEY!, cfg.EMAIL_FROM_ADDRESS) : new MemoryMailer(true),
     board:
       cfg.BOARD_PROVIDER === "kolaboreyt"
-        ? new KolaboreytBoard(cfg.KOLABOREYT_API_KEY!, cfg.KOLABOREYT_BASE_URL!)
-        : new LocalBoard((runId) => `${cfg.ATTENTIVELY_BASE_URL}/runs/${runId}`),
+        ? new KolaboreytBoard({
+            apiKey: cfg.KOLABOREYT_API_KEY!,
+            baseUrl: cfg.KOLABOREYT_BASE_URL,
+            workspaceId: cfg.KOLABOREYT_WORKSPACE_ID!,
+            boardName: cfg.KOLABOREYT_BOARD_NAME,
+            minIntervalMs: cfg.KOLABOREYT_MIN_INTERVAL_MS,
+            db,
+          })
+        : new LocalBoard(),
   };
 }

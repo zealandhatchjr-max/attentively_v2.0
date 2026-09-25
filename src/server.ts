@@ -19,7 +19,7 @@ export async function createCtx(): Promise<Ctx> {
   if (existsSync(".env")) process.loadEnvFile(".env");
   const cfg = loadConfig();
   const db = await openDb({ databaseUrl: cfg.DATABASE_URL, pgliteDir: cfg.PGLITE_DATA_DIR });
-  return { db, cfg, providers: buildProviders(cfg), now: () => new Date(), log: makeLogger() };
+  return { db, cfg, providers: buildProviders(cfg, db), now: () => new Date(), log: makeLogger() };
 }
 
 async function main() {

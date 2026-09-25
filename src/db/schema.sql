@@ -205,3 +205,14 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS source_url TEXT;       -- where the
 ALTER TABLE users ADD COLUMN IF NOT EXISTS assistant_name TEXT NOT NULL DEFAULT 'Maddie';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_name TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_id TEXT;
+
+-- External board ids (Kolaboreyt items, subitems, comments, last-written cell values),
+-- so board sync is idempotent across restarts and only changed cells are written.
+CREATE TABLE IF NOT EXISTS board_refs (
+  provider     TEXT NOT NULL,
+  kind         TEXT NOT NULL,     -- board | run | vendor | note | cell
+  key          TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  value_hash   TEXT,
+  PRIMARY KEY (provider, kind, key)
+);

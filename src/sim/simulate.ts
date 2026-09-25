@@ -33,7 +33,7 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
       places: new FakePlaces(),
       extractor: new FakeExtractor(),
       mailer,
-      board: new LocalBoard((id) => `${cfg.ATTENTIVELY_BASE_URL}/runs/${id}`),
+      board: new LocalBoard(),
     },
     now: () => clock,
     log: opts.quiet ? () => {} : (m, d) => console.log(`   · ${m}`, d ?? ""),

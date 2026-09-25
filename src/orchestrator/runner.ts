@@ -451,9 +451,35 @@ export async function stopRun(ctx: Ctx, runId: string, userId: string): Promise<
   return { ok: true };
 }
 
-/** Worker: advance every due run. */
+/**
+ * Someone can mark a run Resolved on the board itself (e.g. the Status column in
+ * Kolaboreyt). Boards have no webhooks, so check unresolved runs periodically.
+ */
+export async function pollBoardResolved(ctx: Ctx): Promise<number> {
+  if (ctx.providers.board.name === "local") return 0; // the local board resolves directly
+  const runs = await ctx.db.query<{ id: string; user_id: string; board_id: string }>(
+    `SELECT id, user_id, board_id FROM runs WHERE board_id IS NOT NULL AND resolved_at IS NULL
+       AND status <> ALL($1) ORDER BY updated_at DESC LIMIT 200`,
+    [[RunStatus.Stopped, RunStatus.Failed]],
+  );
+  let resolved = 0;
+  for (const r of runs) {
+    try {
+      if (await ctx.providers.board.isResolved(r.board_id)) {
+        await resolveRun(ctx, r.id, r.user_id, ctx.providers.board.name);
+        resolved += 1;
+      }
+    } catch (e) {
+      ctx.log("board.resolved_poll_failed", { runId: r.id, error: String(e) });
+    }
+  }
+  return resolved;
+}
+
+/** Worker: advance every due run, and pick up Resolved set on the board. */
 export function startWorker(ctx: Ctx): () => void {
   let busy = false;
+  let lastResolvedPoll = 0;
   const tick = async () => {
     if (busy) return;
     busy = true;
@@ -466,6 +492,10 @@ export function startWorker(ctx: Ctx): () => void {
           ctx.log("worker.advance_failed", { runId: id, error: String(e) });
           await store.releaseRun(ctx.db, id);
         }
+      }
+      if (Date.now() - lastResolvedPoll >= ctx.cfg.RESOLVED_POLL_SECONDS * 1000) {
+        lastResolvedPoll = Date.now();
+        await pollBoardResolved(ctx);
       }
     } finally {
       busy = false;

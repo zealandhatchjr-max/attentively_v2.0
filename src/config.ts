@@ -40,7 +40,11 @@ const EnvSchema = z.object({
   PLACES_API_KEY: optional,
 
   KOLABOREYT_API_KEY: optional,
-  KOLABOREYT_BASE_URL: optional,
+  KOLABOREYT_BASE_URL: z.string().default("https://api.kolaboreyt.com"),
+  KOLABOREYT_WORKSPACE_ID: optional,
+  KOLABOREYT_BOARD_NAME: z.string().default("Attentively: Quotes"),
+  KOLABOREYT_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(500),
+  RESOLVED_POLL_SECONDS: z.coerce.number().int().positive().default(120),
 
   EMAIL_PROVIDER_API_KEY: optional,
   EMAIL_FROM_ADDRESS: z.string().default("Attentively <reports@example.com>"),
@@ -84,7 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     [c.PLACES_PROVIDER === "google", ["PLACES_API_KEY"]],
     [c.EXTRACTOR_PROVIDER === "anthropic", ["ANTHROPIC_API_KEY"]],
     [c.MAIL_PROVIDER === "resend", ["EMAIL_PROVIDER_API_KEY"]],
-    [c.BOARD_PROVIDER === "kolaboreyt", ["KOLABOREYT_API_KEY", "KOLABOREYT_BASE_URL"]],
+    [c.BOARD_PROVIDER === "kolaboreyt", ["KOLABOREYT_API_KEY", "KOLABOREYT_WORKSPACE_ID"]],
     [c.NODE_ENV === "production", ["LINK_SIGNING_SECRET", "DATABASE_URL"]],
   ];
   const missing = required

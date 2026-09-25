@@ -483,7 +483,7 @@ export async function scheduleRun(db: Db, runId: string, at: Date) {
   await db.query(`UPDATE runs SET next_action_at=$2, updated_at=now() WHERE id=$1`, [runId, at]);
 }
 
-export async function setBoard(db: Db, runId: string, boardId: string, boardUrl: string) {
+export async function setBoard(db: Db, runId: string, boardId: string | null, boardUrl: string) {
   await db.query(`UPDATE runs SET board_id=$2, board_url=$3 WHERE id=$1`, [runId, boardId, boardUrl]);
 }
 

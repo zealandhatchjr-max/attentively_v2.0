@@ -14,7 +14,8 @@
     "test": "vitest run",
     "simulate": "tsx src/sim/simulate.ts",
     "create-user": "tsx src/admin/create-user.ts",
-    "set-persona": "tsx src/admin/set-persona.ts"
+    "set-persona": "tsx src/admin/set-persona.ts",
+    "kolaboreyt:check": "tsx src/admin/kolaboreyt-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

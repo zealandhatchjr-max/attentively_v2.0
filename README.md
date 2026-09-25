@@ -1,4 +1,6 @@
-# Attentively
+# Attentively v2.0
+
+> Formerly "Ringer". Version 2.0.0.
 
 Attentively lets an AI assistant (ChatGPT first, then Claude and Grok) **ring local businesses for you**. It checks stock, real prices and promos that shops don't put online, then emails you a comparison.
 
@@ -12,7 +14,7 @@ The assistant decides by itself when Attentively would help. The user approves b
 ```bash
 npm install
 npm run simulate   # a full Gold Coast tyre run against simulated shops
-npm test           # 42 tests: approval gate, dialling, Needs-you, negotiation, inbound, memory, HTTP/MCP
+npm test           # 54 tests: approval gate, dialling, Needs-you, negotiation, persona, Kolaboreyt, inbound, HTTP/MCP
 npm run dev        # server on http://localhost:8787 (MCP endpoint: /mcp)
 ```
 
@@ -65,6 +67,30 @@ The user never needs an API key. They use Attentively through their normal ChatG
 
 Verifications are cached for 14 days (`VERIFY_MAX_AGE_DAYS`), and lookups are capped per user per day (`PLACES_LOOKUPS_PER_USER_PER_DAY`).
 
+## Voice agent persona
+
+Each user has a named voice agent. Calls open like this:
+
+> "Hi, I'm Maddie, a virtual receptionist calling on behalf of Zealand. I was wondering if you could help me with a quote for 4 x 205/55R16 91V tyres."
+
+Until self-serve onboarding exists (a later phase), set the name, the owner's first name and the voice from the command line:
+
+```bash
+npm run create-user -- you@example.com --owner Zealand --assistant Maddie [--voice <elevenlabs-voice-id>]
+npm run set-persona -- you@example.com --assistant Sam --default-voice
+```
+
+The agent shares only the owner's first name, and always says it's an AI if asked.
+
+## Kolaboreyt board
+
+Quote runs go on one **"Attentively: Quotes"** board, with **one item per request** and **one subitem per vendor**:
+- Each vendor's offer fills that subitem's columns.
+- Call transcripts are posted as comments.
+- Setting the request's Status to **Resolved** in Kolaboreyt stops follow-ups.
+
+The database remains the system of record, and board sync is idempotent. See `src/providers/kolaboreyt.ts`.
+
 ## Secrets
 
 All keys come from **environment variables**, read only in `src/config.ts`. See [`.env.example`](.env.example). `.env` files are git-ignored. Production uses the host's secret manager with the same names. Logs redact secret values, and CI runs a secret scan.
@@ -78,7 +104,8 @@ The real provider adapters are written but **not yet run against live accounts**
 - [ ] **Google Places:** check that `businessStatus`, phone numbers and opening hours come back for Gold Coast tyre shops, including a known closed one. Review the licensing terms for caching place data.
 - [ ] **Claude extraction:** set `EXTRACTOR_PROVIDER=anthropic` and check extraction against real transcripts (build `evals/extraction`).
 - [ ] **Email:** set up Resend (or similar) for sending, plus an inbound email route that posts to `/webhooks/email` with `x-attentively-secret`.
-- [ ] **Kolaboreyt:** waiting on the API docs. Implement `src/providers/kolaboreyt.ts`, then set `BOARD_PROVIDER=kolaboreyt`.
+- [ ] **Kolaboreyt:** allow `api.kolaboreyt.com` in the network settings. Put the key (scopes `boards:read`, `boards:write`, `columns:write`, `items:read`, `items:write`) in `KOLABOREYT_API_KEY`. Run `npm run kolaboreyt:check` to find the workspace id, set `KOLABOREYT_WORKSPACE_ID`, then run `npm run kolaboreyt:check -- --setup` and set `BOARD_PROVIDER=kolaboreyt`.
+- [ ] **ElevenLabs persona:** allow the `tts.voice_id` override on the agent if users choose voices.
 - [ ] **Postgres:** set `DATABASE_URL` and `LINK_SIGNING_SECRET`.
 - [ ] **Legal:** Queensland call transcription, the AI-disclosure wording, and whether DNC rules apply.
 - [ ] **First real run:** one real Gold Coast tyre run by the team, with five vendors.

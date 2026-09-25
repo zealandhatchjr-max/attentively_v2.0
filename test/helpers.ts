@@ -22,7 +22,7 @@ export async function makeCtx(env: Record<string, string> = {}) {
       places: new FakePlaces(),
       extractor: new FakeExtractor(),
       mailer,
-      board: new LocalBoard((id) => `http://test/runs/${id}`),
+      board: new LocalBoard(),
     },
     now: () => clock.now,
     log: () => {},

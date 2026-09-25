@@ -1,4 +1,6 @@
-# Attentively: ChatGPT App Build Plan
+# Attentively v2.0: ChatGPT App Build Plan
+
+> **Naming:** this project was called "Ringer" until v2.0 and is now **Attentively v2.0** (repo being renamed `ringring` → `attentively`). It is separate from the developer's existing inbound app (`Simply-Expanding/attentively`), which this project does not change.
 
 Status: Draft plan, building on the Attentively PRD (Draft for product and engineering review)
 Launch surface: **ChatGPT app** (Apps SDK / MCP). Grok and Claude connectors reuse the same MCP server later.
@@ -73,13 +75,22 @@ Vendor calls the user's assistant number later → inbound AI recognises them �
 
 The Phase 1 core is built and tested with simulated providers. See README.md for what's real, what's faked, and the Phase 0 go-live checklist.
 
+## 1.0a Changes in v2.0 (2026-09-25)
+- **Renamed** Ringer → Attentively, version 2.0.0.
+- **Voice agent persona.** Each user has a named voice agent: name, voice, and the user's first name. Calls open: *"Hi, I'm Maddie, a virtual receptionist calling on behalf of Zealand. I was wondering if you could help me with a quote for…"*. "Maddie" is Zealand's choice and the default.
+  - A **self-serve onboarding flow** where users choose the name and voice is a **later phase**. Until then these are set with `create-user` / `set-persona`.
+- **AI honesty rule** (every prompt): if asked whether it's a person or an AI, the agent always says it's an AI assistant and never claims to be human. Only the owner's **first name** is ever shared.
+  - "Virtual receptionist" plus this rule replaces the old "I'm an AI assistant" opener. That wording is on the legal-review list.
+- **Transcription notice** is now a flag (`TRANSCRIPTION_NOTICE`, default off) pending legal advice.
+- **Kolaboreyt board is live in code** (see the updated decision below). Emails still link to Attentively's own board page.
+
 ## 1.1 Product decisions (from founder Q&A, 2026-09-24)
 
 These override the PRD where they conflict.
 
 **Identity: every user gets their own assistant number**
 - Each subscriber gets a **dedicated Twilio number** that works like a celebrity's assistant line. The user's real number is **never** given to vendors.
-- Vendors hear: "I'm an AI assistant calling on behalf of a customer." If asked for a name or number, the AI gives the assistant number: "You can reach me on this number."
+- Vendors hear the user's voice agent: "Hi, I'm Maddie, a virtual receptionist calling on behalf of Zealand…" (v2.0; see §1.0a). If asked for a number, the agent gives the assistant number: "You can reach me on this number."
 - Attentively is **gathering information only**. The MVP makes no bookings, holds or payments.
 
 **Inbound: the assistant number is always answered by the AI**
@@ -113,7 +124,7 @@ These override the PRD where they conflict.
 - First use in ChatGPT shows **"Connect Attentively"**. Sign-up, subscription and assistant-number setup happen **on Attentively's own site** (OAuth account link). Attentively owns the customer and billing relationship.
 
 **Voice**
-- **Neutral and professional**, like a polite receptionist. It always opens with the AI disclosure.
+- **Neutral and professional**, like a polite receptionist. Name and voice are chosen per user (onboarding: later phase). The agent always admits it's an AI if asked.
 
 **Who pays for what: users never need an API key**
 - Users reach Attentively through their normal **ChatGPT, Claude or other assistant subscription**. The assistant's own research and web/maps search **find the businesses**, under the user's subscription. **Attentively never searches for vendors.**
@@ -133,15 +144,22 @@ These override the PRD where they conflict.
 - Each user's assistant also gets an **email address** (e.g. `a-7f3k@assist.attentively…`), and its number **accepts SMS**.
 - If a vendor asks "can you email or text me the details?", the AI gives the assistant's address or number. Inbound emails and texts are matched to the vendor and run (by sender, then by thread or reference), parsed into observations, and added to the board, following the same late-info and Resolved rules as callbacks.
 
-**Kolaboreyt: Attentively owns the boards**
-- All boards live in **Attentively's Kolaboreyt workspace**. Users get a per-run **share link**, where they can view the board, answer *Needs you* and press Resolved. Users do not get Kolaboreyt accounts.
+**Kolaboreyt: one board, one item per request, one subitem per vendor** (updated v2.0 from the API docs)
+- **Layout:** a single **"Attentively: Quotes"** board in the configured workspace.
+  - **Each request is an item:** Status (Awaiting approval, Calling, Needs you, Paused, Complete, **Resolved**), Best price, Best vendor, Location, Report link, Updated.
+  - **Each vendor is a subitem:** Call status, Phone, Price, Negotiated, Alternative, Promo, Earliest, Valid until, Contact, Summary.
+  - **Each call's summary and transcript** is a comment on the vendor's subitem.
+- **Why one board, not one per run:** boards count against the account quota, and the Platform API can't create groups.
+- **Resolved:** setting Status to Resolved in Kolaboreyt resolves the run. It's polled every `RESOLVED_POLL_SECONDS`, because the API has no webhooks.
+- **Share links:** Kolaboreyt's API has none, so emails link to Attentively's own board page, which can answer *Needs you* and press Resolved. The Kolaboreyt item carries the same link.
+- **Sync is idempotent** via `board_refs`: only changed cells are written, and restarts never duplicate rows or comments. Board failures never block calls.
 
 **Shared vendor data: opt-in, anonymised, dated**
 - A user's observations feed the shared vendor memory **only if they opt in**. They are stored with **no link to who asked**, and **always carry the date observed**.
 - Every observation's weight decays with age: a price or stock level older than a category-specific window (e.g. 14 days for tyre prices) is shown as "last seen" context, never as a current quote, and is never used as negotiation leverage.
 
 **Transcripts only, no audio kept**
-- Calls are **transcribed but not recorded**. No audio is kept by Attentively, Twilio or ElevenLabs. Recording and audio retention must be switched off at every provider, and Phase 0 has to verify this. The transcript plus the extracted fields are the evidence. (This overrides the PRD's "audio reference".) The opening line says the call is transcribed.
+- Calls are **transcribed but not recorded**. No audio is kept by Attentively, Twilio or ElevenLabs. Recording and audio retention must be switched off at every provider, and Phase 0 has to verify this. The transcript plus the extracted fields are the evidence. (This overrides the PRD's "audio reference".) Whether the opening line says the call is transcribed is a flag (`TRANSCRIPTION_NOTICE`), pending legal advice.
 
 **Needs you with no reply**
 - If the user hasn't answered within **~2 business hours**, Attentively **skips the question and continues** with the remaining vendors on the current brief. The unanswered question and its vendor are listed in the report.
@@ -333,6 +351,9 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 - Tune invocation metadata until eval targets are met: e.g. ≥90% recall on direct/implicit and ≤5% false positives on near-misses.
 - **10 supervised internal runs** from ChatGPT dev mode.
 - **Exit:** PRD MVP metrics met (§15) or gaps documented and accepted.
+
+### Phase 2b: Self-serve onboarding (later)
+- Users choose their voice agent's **name and voice** and enter their first name, then connect their account. This calls the same `onboardUser()` the CLI uses today.
 
 ### Phase 3: Private pilot (3–4 weeks)
 - Invited testers on managed company keys, no charging. Human review of recommendations before they're shown, if §9 decides that.
