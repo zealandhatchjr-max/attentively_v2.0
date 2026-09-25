@@ -33,7 +33,7 @@ describe("full simulated run", () => {
     expect(s.calls).toBe(7); // 6 vendors + 1 call-back after the Needs-you answer
     expect(s.dnc_recorded).toBe(true);
     expect(s.emails[0]).toMatch(/needs you/i);
-    expect(s.emails.some((e) => e.startsWith("Ringer report"))).toBe(true);
+    expect(s.emails.some((e) => e.startsWith("Attentively report"))).toBe(true);
     expect(s.emails.some((e) => e.startsWith("Updated report"))).toBe(true);
     expect(s.emails_after_resolve).toBe(0);
     expect(s.minutes_left).toBeLessThan(120);

@@ -3,7 +3,7 @@ import * as store from "../core/store.js";
 import type { Offer } from "../core/types.js";
 
 /**
- * Projects Ringer's records onto the run board (Kolaboreyt, or the local board).
+ * Projects Attentively's records onto the run board (Kolaboreyt, or the local board).
  * Board failures are logged and never block or lose a call.
  */
 export async function ensureBoard(ctx: Ctx, runId: string): Promise<void> {
@@ -12,7 +12,7 @@ export async function ensureBoard(ctx: Ctx, runId: string): Promise<void> {
   try {
     const { boardId, shareUrl } = await ctx.providers.board.createBoard({
       runId,
-      title: `Ringer: ${run.request.need.item}`,
+      title: `Attentively: ${run.request.need.item}`,
       header: { request: run.request.text, location: run.location.text, status: run.status },
       columns: ["status", "price", "negotiated", "alternative", "earliest", "promo", "valid_until", "contact", "summary"],
     });

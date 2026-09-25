@@ -10,7 +10,7 @@ const optional = z.string().optional().transform((v) => (v === "" ? undefined : 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(8787),
-  RINGER_BASE_URL: z.string().default("http://localhost:8787"),
+  ATTENTIVELY_BASE_URL: z.string().default("http://localhost:8787"),
   LINK_SIGNING_SECRET: optional,
 
   // Empty DATABASE_URL = embedded Postgres (PGlite) for local dev and tests.
@@ -43,7 +43,7 @@ const EnvSchema = z.object({
   KOLABOREYT_BASE_URL: optional,
 
   EMAIL_PROVIDER_API_KEY: optional,
-  EMAIL_FROM_ADDRESS: z.string().default("Ringer <reports@example.com>"),
+  EMAIL_FROM_ADDRESS: z.string().default("Attentively <reports@example.com>"),
   ASSISTANT_EMAIL_DOMAIN: z.string().default("assist.example.com"),
   INBOUND_EMAIL_WEBHOOK_SECRET: optional,
 

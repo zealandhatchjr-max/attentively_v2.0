@@ -3,7 +3,7 @@ import { approvalUrl, boardUrl, type Ctx } from "../core/context.js";
 import { isOpen, nextOpening } from "../core/hours.js";
 import * as store from "../core/store.js";
 import { DISCLOSURE } from "./script.js";
-import { RingerError, RunStatus, VendorItemStatus, type Location, type Need, type Plan, type PlanVendor } from "../core/types.js";
+import { AttentivelyError, RunStatus, VendorItemStatus, type Location, type Need, type Plan, type PlanVendor } from "../core/types.js";
 
 /* ---------- check_local_inquiry: read-only, no auth ---------- */
 
@@ -23,7 +23,7 @@ export async function checkLocalInquiry(
     fit: cat.id === "generic" ? "possible" : "strong",
     reason:
       cat.id === "generic"
-        ? "Ringer can phone local businesses about any product or service where price or stock isn't published online."
+        ? "Attentively can phone local businesses about any product or service where price or stock isn't published online."
         : `${cat.label}: local stock, fitted prices and promos are rarely online, so calling around is the reliable way to compare.`,
     category: cat.id,
     category_label: cat.label,
@@ -32,14 +32,14 @@ export async function checkLocalInquiry(
     coverage,
     coverage_note:
       coverage === "not_covered"
-        ? "Ringer is piloting on the Gold Coast only. Tell the user it isn't available in their area yet."
+        ? "Attentively is piloting on the Gold Coast only. Tell the user it isn't available in their area yet."
         : coverage === "unknown"
           ? "Confirm the user's search location before planning. Never use a saved home address without asking."
           : "Location is inside the pilot area.",
     recent_shared_observations: Number(n),
     how_it_works: [
       "1. Confirm location and the exact item. Ask at most 3 questions, only ones that change who to call or what to ask.",
-      "2. Use YOUR OWN web/maps search to find local businesses. Offer Ringer to the user. Only once they say yes, call verify_vendors with what you found.",
+      "2. Use YOUR OWN web/maps search to find local businesses. Offer Attentively to the user. Only once they say yes, call verify_vendors with what you found.",
       "3. verify_vendors drops closed businesses and corrects phone numbers. Show the user every callable one, say which you'd definitely call and why, and ask how many to call.",
       "4. Call plan_run with the user's choice. The user approves on the plan page. Nothing is dialled until they do.",
       "5. Calls run one at a time in business hours. The user gets an email if a vendor asks something only they can answer, and a report at the end.",
@@ -50,11 +50,11 @@ export async function checkLocalInquiry(
   };
 }
 
-/* ---------- verify_vendors: only after the user agrees to use Ringer ---------- */
+/* ---------- verify_vendors: only after the user agrees to use Attentively ---------- */
 
 /**
  * A business the user's own assistant found with its web/maps search (under the
- * user's ChatGPT/Claude subscription). Ringer never searches for vendors itself.
+ * user's ChatGPT/Claude subscription). Attentively never searches for vendors itself.
  */
 export interface VendorCandidate {
   name: string;
@@ -169,8 +169,8 @@ async function verifyCandidate(ctx: Ctx, userId: string, cand: VendorCandidate, 
     ok: phoneCorrected ? `The number you found was out of date. Google lists ${vendor.phone_e164}.` : null,
     closed_permanently: "Google lists this business as permanently closed.",
     closed_temporarily: "Google lists this business as temporarily closed.",
-    do_not_call: "This business asked not to be called by Ringer.",
-    hours_unknown: "Opening hours unknown, so Ringer won't call it.",
+    do_not_call: "This business asked not to be called by Attentively.",
+    hours_unknown: "Opening hours unknown, so Attentively won't call it.",
     not_found: null,
     uncertain_match: null,
     no_phone: null,
@@ -197,9 +197,9 @@ export async function verifyVendors(
   userId: string,
   input: { category: string; location: Location; candidates: VendorCandidate[] },
 ) {
-  if (!input.location.confirmed) throw new RingerError("location_unconfirmed", "Confirm the search location with the user first.");
-  if (!input.candidates.length) throw new RingerError("no_candidates", "Search for local businesses first, then pass them here.");
-  if (input.candidates.length > 20) throw new RingerError("too_many_candidates", "Pass at most 20 businesses.");
+  if (!input.location.confirmed) throw new AttentivelyError("location_unconfirmed", "Confirm the search location with the user first.");
+  if (!input.candidates.length) throw new AttentivelyError("no_candidates", "Search for local businesses first, then pass them here.");
+  if (input.candidates.length > 20) throw new AttentivelyError("too_many_candidates", "Pass at most 20 businesses.");
   const cat = getCategory(input.category);
   const results = [];
   for (const c of input.candidates) results.push(await verifyCandidate(ctx, userId, c, input.location, cat.id));
@@ -248,10 +248,10 @@ export interface PlanRunInput {
 export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
   const { db, cfg } = ctx;
   if (!input.location?.confirmed)
-    throw new RingerError("location_unconfirmed", "The user must confirm the search location. Don't use a saved address without asking.");
+    throw new AttentivelyError("location_unconfirmed", "The user must confirm the search location. Don't use a saved address without asking.");
   const cat = getCategory(input.category);
   const missing = missingSpecs(cat, input.need);
-  if (missing.length) throw new RingerError("missing_details", `Ask the user for: ${missing.join("; ")}`);
+  if (missing.length) throw new AttentivelyError("missing_details", `Ask the user for: ${missing.join("; ")}`);
 
   const user = (await store.getUser(db, userId))!;
   const planVendors: PlanVendor[] = [];
@@ -259,8 +259,8 @@ export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
 
   for (const v of input.vendors) {
     const row = await store.getVendor(db, v.vendor_id);
-    if (!row) throw new RingerError("unknown_vendor", `Unknown vendor_id ${v.vendor_id}. Use ids from verify_vendors.`);
-    if (!row.verified_at) throw new RingerError("unverified_vendor", `${row.name} hasn't been verified. Pass it through verify_vendors first.`);
+    if (!row) throw new AttentivelyError("unknown_vendor", `Unknown vendor_id ${v.vendor_id}. Use ids from verify_vendors.`);
+    if (!row.verified_at) throw new AttentivelyError("unverified_vendor", `${row.name} hasn't been verified. Pass it through verify_vendors first.`);
     let selected = v.selected;
     if (selected && row.dnc) {
       selected = false;
@@ -270,7 +270,7 @@ export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
       selected = false;
       notes.push(`${row.name} is listed as ${row.business_status === "CLOSED_PERMANENTLY" ? "permanently" : "temporarily"} closed, so it's been left out.`);
     }
-    planVendors.push({ vendor_id: row.id, name: row.name, phone: row.phone_e164, recommended: Boolean(v.recommended), reason: v.reason, source: "ringer", selected });
+    planVendors.push({ vendor_id: row.id, name: row.name, phone: row.phone_e164, recommended: Boolean(v.recommended), reason: v.reason, source: "attentively", selected });
   }
 
   for (const u of input.user_added_vendors ?? []) {
@@ -286,9 +286,9 @@ export async function planRun(ctx: Ctx, userId: string, input: PlanRunInput) {
   // Recommended picks first, then the rest of the selected vendors, then unselected ones.
   planVendors.sort((a, b) => Number(b.selected) - Number(a.selected) || Number(b.recommended) - Number(a.recommended));
   const selected = planVendors.filter((p) => p.selected);
-  if (!selected.length) throw new RingerError("no_vendors", "Select at least one vendor to call.");
+  if (!selected.length) throw new AttentivelyError("no_vendors", "Select at least one vendor to call.");
   if (selected.length > cfg.MAX_CALLS_PER_RUN)
-    throw new RingerError("too_many_vendors", `At most ${cfg.MAX_CALLS_PER_RUN} vendors can be called in one run.`);
+    throw new AttentivelyError("too_many_vendors", `At most ${cfg.MAX_CALLS_PER_RUN} vendors can be called in one run.`);
 
   const estimated = Math.round(selected.length * cfg.EST_MINUTES_PER_CALL);
   const plan: Omit<Plan, "version"> = {
@@ -350,7 +350,7 @@ export async function requestAction(
   if (input.action === "export_csv") return { csv: await exportCsv(ctx, run.id) };
 
   if (![RunStatus.Completed, RunStatus.Stopped].includes(run.status as any))
-    throw new RingerError("run_active", "Follow-up calls can be planned once the current calls have finished.");
+    throw new AttentivelyError("run_active", "Follow-up calls can be planned once the current calls have finished.");
   const items = await store.runVendors(db, run.id);
   let ids: string[];
   if (input.action === "round_two") {
@@ -362,7 +362,7 @@ export async function requestAction(
     ids = (input.vendor_ids ?? []).filter((id) => items.some((i) => i.vendor_id === id && i.status === VendorItemStatus.NotSelected));
   }
   ids = ids.filter((id) => !items.find((i) => i.vendor_id === id)?.vendor.dnc);
-  if (!ids.length) throw new RingerError("nothing_to_do", "No vendors match that follow-up.");
+  if (!ids.length) throw new AttentivelyError("nothing_to_do", "No vendors match that follow-up.");
 
   const prev = (await store.getPlan(db, run.id))!;
   const round = Math.max(...items.map((i) => i.round)) + (input.action === "call_more" ? 0 : 1);

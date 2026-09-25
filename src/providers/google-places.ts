@@ -4,7 +4,7 @@ import type { PlaceResult, PlacesProvider } from "./types.js";
 /**
  * Google Places API (New), used only to VERIFY vendors the user's assistant found:
  * the business is still open (businessStatus), and its real phone and hours.
- * Called only after the user has agreed to use Ringer; results are cached.
+ * Called only after the user has agreed to use Attentively; results are cached.
  * PHASE 0 VERIFY: confirm licensing terms for storing place data in vendor memory.
  */
 export class GooglePlaces implements PlacesProvider {

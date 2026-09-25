@@ -13,10 +13,10 @@ export interface Ctx {
 
 export function boardUrl(ctx: Ctx, runId: string, userId: string): string {
   const token = signLink(ctx.cfg.linkSecret, { run: runId, user: userId, purpose: "board" }, 60 * 24 * 3600);
-  return `${ctx.cfg.RINGER_BASE_URL}/b/${token}`;
+  return `${ctx.cfg.ATTENTIVELY_BASE_URL}/b/${token}`;
 }
 
 export function approvalUrl(ctx: Ctx, runId: string, userId: string, planVersion: number): string {
   const token = signLink(ctx.cfg.linkSecret, { run: runId, user: userId, purpose: "approve", plan: planVersion }, 3 * 24 * 3600);
-  return `${ctx.cfg.RINGER_BASE_URL}/approve/${token}`;
+  return `${ctx.cfg.ATTENTIVELY_BASE_URL}/approve/${token}`;
 }

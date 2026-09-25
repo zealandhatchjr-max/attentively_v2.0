@@ -5,9 +5,9 @@ import type { BoardItem, BoardProvider } from "./types.js";
  *
  * WAITING ON API DOCS: the method bodies below are placeholders until the
  * Kolaboreyt API key and integration instructions arrive. Until then run with
- * BOARD_PROVIDER=local, which serves the same board from Ringer.
+ * BOARD_PROVIDER=local, which serves the same board from Attentively.
  *
- * Needed from the API: create a board per run in Ringer's workspace, custom
+ * Needed from the API: create a board per run in Attentively's workspace, custom
  * columns, upsert items, a per-run share link (view, answer, Resolve), and a
  * webhook or poll for the Resolved status.
  */

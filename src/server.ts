@@ -26,7 +26,7 @@ async function main() {
   const ctx = await createCtx();
   const app = buildApp(ctx);
   const stop = startWorker(ctx);
-  const server = app.listen(ctx.cfg.PORT, () => ctx.log("ringer.listening", { port: ctx.cfg.PORT, base: ctx.cfg.RINGER_BASE_URL }));
+  const server = app.listen(ctx.cfg.PORT, () => ctx.log("attentively.listening", { port: ctx.cfg.PORT, base: ctx.cfg.ATTENTIVELY_BASE_URL }));
   const shutdown = async () => {
     stop();
     server.close();

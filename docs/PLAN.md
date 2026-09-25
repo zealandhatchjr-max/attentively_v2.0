@@ -1,21 +1,21 @@
-# Ringer: ChatGPT App Build Plan
+# Attentively: ChatGPT App Build Plan
 
-Status: Draft plan, building on the Ringer PRD (Draft for product and engineering review)
+Status: Draft plan, building on the Attentively PRD (Draft for product and engineering review)
 Launch surface: **ChatGPT app** (Apps SDK / MCP). Grok and Claude connectors reuse the same MCP server later.
 
 ---
 
 ## 0. What this plan changes from the PRD
 
-The PRD still holds. This plan changes five things so it fits ChatGPT and the goal that **the assistant decides on its own to use Ringer**:
+The PRD still holds. This plan changes five things so it fits ChatGPT and the goal that **the assistant decides on its own to use Attentively**:
 
 | # | PRD assumption | Change | Why |
 |---|---|---|---|
 | 1 | Grok ships first | **ChatGPT ships first.** Grok and Claude follow on the same MCP core. | ChatGPT apps are MCP servers with optional UI widgets. Claude and Grok also speak MCP, so the adapter layer stays thin and the order is a distribution choice, not an architecture choice. |
-| 2 | The user or host explicitly starts Ringer | **The model invokes Ringer itself** when it sees a local-buy-with-hidden-stock situation. This needs a new cheap, safe entry tool and invocation evals (§2). | This is the core product behaviour you described. |
-| 3 | The host assistant runs the call loop (`place_call` → `wait_for_call` → checkpoint → next) | **Ringer runs the loop server-side.** The host only plans, approves, answers checkpoints, and presents results. | A five-call run takes 20–40 minutes. A ChatGPT turn ends long before that, and the model does not run between user messages. A long-blocking `wait_for_call` would time out. |
-| 4 | Checkpoint reasoning happens in the host model | **Ringer's own LLM** does extraction and in-brief/out-of-brief classification after each call. Anything that needs a human becomes *Needs you*. | Same reason: nobody is "in the chat" while calls run. |
-| 5 | Standalone entry point comes in Phase 5 | **Email notifications and a board link (Kolaboreyt) ship in the MVP.** | ChatGPT cannot reliably post into a conversation on its own later. Ringer needs its own way to reach the user (an email linking to the Kolaboreyt board) for *Needs you* and *Done*. |
+| 2 | The user or host explicitly starts Attentively | **The model invokes Attentively itself** when it sees a local-buy-with-hidden-stock situation. This needs a new cheap, safe entry tool and invocation evals (§2). | This is the core product behaviour you described. |
+| 3 | The host assistant runs the call loop (`place_call` → `wait_for_call` → checkpoint → next) | **Attentively runs the loop server-side.** The host only plans, approves, answers checkpoints, and presents results. | A five-call run takes 20–40 minutes. A ChatGPT turn ends long before that, and the model does not run between user messages. A long-blocking `wait_for_call` would time out. |
+| 4 | Checkpoint reasoning happens in the host model | **Attentively's own LLM** does extraction and in-brief/out-of-brief classification after each call. Anything that needs a human becomes *Needs you*. | Same reason: nobody is "in the chat" while calls run. |
+| 5 | Standalone entry point comes in Phase 5 | **Email notifications and a board link (Kolaboreyt) ship in the MVP.** | ChatGPT cannot reliably post into a conversation on its own later. Attentively needs its own way to reach the user (an email linking to the Kolaboreyt board) for *Needs you* and *Done*. |
 
 Also: open decision #6 (call cap) is resolved. **There is no fixed default.** The AI shows the user every suitable vendor it found, says which ones it would definitely call and why, and **asks how many to call** (§2.4). A system-wide safety ceiling set in config stays in place to protect against runaway cost.
 
@@ -28,16 +28,16 @@ User: "My front tyre's got a bulge, here's a photo. Need 4 new ones this week, I
   │
   ▼
 ChatGPT model sees: physical product + local fitting + price/stock rarely online
-  │  → calls ringer.check_local_inquiry   (read-only, no cost, no auth needed)
+  │  → calls attentively.check_local_inquiry   (read-only, no cost, no auth needed)
   ▼
-Ringer returns: "good fit", category=tyres, the fields it needs, what's missing
+Attentively returns: "good fit", category=tyres, the fields it needs, what's missing
   │
   ▼
 Model reads the size off the photo (e.g. 205/55R16 91V), researches, asks ≤3 questions
   ("Fitted & balanced? Budget or mid-range brands? Need it by Friday?")
   │
   ▼
-Model calls ringer.plan_run → widget renders the PLAN CARD
+Model calls attentively.plan_run → widget renders the PLAN CARD
   "I found 10 local vendors. I'd definitely call Beaurepaires Robina (07 …) and
    Tyrepower Varsity Lakes (07 …), they list your size. How many would you like me to call?"
   User: "Call 4"
@@ -47,7 +47,7 @@ Model calls ringer.plan_run → widget renders the PLAN CARD
 User taps [Approve]  ← approval is a UI event tied to the user, not something the model asserts
   │
   ▼
-Ringer orchestrator: call 1 → extract → brief v2 → call 2 → ... (sequential, business hours)
+Attentively orchestrator: call 1 → extract → brief v2 → call 2 → ... (sequential, business hours)
   │            │
   │            └─ vendor asks "which load rating?" and it's not in the brief
   │                → vendor item = NEEDS YOU, run pauses, email to user
@@ -80,11 +80,11 @@ These override the PRD where they conflict.
 **Identity: every user gets their own assistant number**
 - Each subscriber gets a **dedicated Twilio number** that works like a celebrity's assistant line. The user's real number is **never** given to vendors.
 - Vendors hear: "I'm an AI assistant calling on behalf of a customer." If asked for a name or number, the AI gives the assistant number: "You can reach me on this number."
-- Ringer is **gathering information only**. The MVP makes no bookings, holds or payments.
+- Attentively is **gathering information only**. The MVP makes no bookings, holds or payments.
 
 **Inbound: the assistant number is always answered by the AI**
 - Every inbound call to a user's number goes to the voice agent.
-- On ring, the agent looks up the caller's number against Ringer's database: which vendor is this, and which runs and calls have we had with them for this user? It then loads the previous call's notes and transcript summary into its context ("Hi, thanks for calling back about the 205/55R16 tyres…").
+- On ring, the agent looks up the caller's number against Attentively's database: which vendor is this, and which runs and calls have we had with them for this user? It then loads the previous call's notes and transcript summary into its context ("Hi, thanks for calling back about the 205/55R16 tyres…").
 - Unknown callers (including the user's own phone, since the user doesn't know the number) get a polite receptionist flow: take a message, attach it to the user's account, and email the user.
 - Everything a callback captures lands on the run's Kolaboreyt board as a new call record with the same evidence rules as outbound calls.
 
@@ -95,7 +95,7 @@ These override the PRD where they conflict.
 - **Second round:** earlier vendors never heard the later, lower quotes. So the report can suggest going back ("Beaurepaires might match $580, want me to call them back?"). The call-back round only happens after the **user approves** it.
 
 **Report and next step**
-- When the run finishes, Ringer emails a **report** (and updates the Kolaboreyt board) with what it found, the ranking, the evidence and a **recommended next step**. The user acts on it themselves.
+- When the run finishes, Attentively emails a **report** (and updates the Kolaboreyt board) with what it found, the ranking, the evidence and a **recommended next step**. The user acts on it themselves.
 
 **Timing**
 - Requests outside business hours are **queued**. The user approves the plan now, and each call is placed when that shop opens. The report arrives later, with the expected time shown on the Plan card.
@@ -110,55 +110,55 @@ These override the PRD where they conflict.
 - The Plan card shows the estimated minutes against the user's remaining balance.
 
 **Sign-up**
-- First use in ChatGPT shows **"Connect Ringer"**. Sign-up, subscription and assistant-number setup happen **on Ringer's own site** (OAuth account link). Ringer owns the customer and billing relationship.
+- First use in ChatGPT shows **"Connect Attentively"**. Sign-up, subscription and assistant-number setup happen **on Attentively's own site** (OAuth account link). Attentively owns the customer and billing relationship.
 
 **Voice**
 - **Neutral and professional**, like a polite receptionist. It always opens with the AI disclosure.
 
 **Who pays for what: users never need an API key**
-- Users reach Ringer through their normal **ChatGPT, Claude or other assistant subscription**. The assistant's own research and web/maps search **find the businesses**, under the user's subscription. **Ringer never searches for vendors.**
-- Ringer uses **Google Places only after the user agrees to use Ringer**, and only to **verify** the businesses the assistant found (`verify_vendors`):
+- Users reach Attentively through their normal **ChatGPT, Claude or other assistant subscription**. The assistant's own research and web/maps search **find the businesses**, under the user's subscription. **Attentively never searches for vendors.**
+- Attentively uses **Google Places only after the user agrees to use Attentively**, and only to **verify** the businesses the assistant found (`verify_vendors`):
   - It drops businesses Google lists as **permanently or temporarily closed**. Assistants often still recommend them.
   - It corrects out-of-date phone numbers, gets opening hours, and flags names Google can't match.
 - Verifications are cached for 14 days, and lookups are capped per user per day to control cost. A shop that closes after approval is still skipped before it's dialled.
-- Ringer's own keys (Places, voice, Claude transcript extraction, email) are Ringer's running costs, covered by the Ringer subscription.
+- Attentively's own keys (Places, voice, Claude transcript extraction, email) are Attentively's running costs, covered by the Attentively subscription.
 
 **First user**
 - **The founding team** runs real inquiries for themselves first.
 
 **Assistant number is hidden from the user too**
-- The user is **never shown** their assistant number. It exists only for vendors to call back and text. When the user's own phone calls it, it gets the normal receptionist flow. Users reach Ringer through ChatGPT, email and the board link.
+- The user is **never shown** their assistant number. It exists only for vendors to call back and text. When the user's own phone calls it, it gets the normal receptionist flow. Users reach Attentively through ChatGPT, email and the board link.
 
 **Written replies: every assistant gets an email address and SMS**
-- Each user's assistant also gets an **email address** (e.g. `a-7f3k@assist.ringer…`), and its number **accepts SMS**.
+- Each user's assistant also gets an **email address** (e.g. `a-7f3k@assist.attentively…`), and its number **accepts SMS**.
 - If a vendor asks "can you email or text me the details?", the AI gives the assistant's address or number. Inbound emails and texts are matched to the vendor and run (by sender, then by thread or reference), parsed into observations, and added to the board, following the same late-info and Resolved rules as callbacks.
 
-**Kolaboreyt: Ringer owns the boards**
-- All boards live in **Ringer's Kolaboreyt workspace**. Users get a per-run **share link**, where they can view the board, answer *Needs you* and press Resolved. Users do not get Kolaboreyt accounts.
+**Kolaboreyt: Attentively owns the boards**
+- All boards live in **Attentively's Kolaboreyt workspace**. Users get a per-run **share link**, where they can view the board, answer *Needs you* and press Resolved. Users do not get Kolaboreyt accounts.
 
 **Shared vendor data: opt-in, anonymised, dated**
 - A user's observations feed the shared vendor memory **only if they opt in**. They are stored with **no link to who asked**, and **always carry the date observed**.
 - Every observation's weight decays with age: a price or stock level older than a category-specific window (e.g. 14 days for tyre prices) is shown as "last seen" context, never as a current quote, and is never used as negotiation leverage.
 
 **Transcripts only, no audio kept**
-- Calls are **transcribed but not recorded**. No audio is kept by Ringer, Twilio or ElevenLabs. Recording and audio retention must be switched off at every provider, and Phase 0 has to verify this. The transcript plus the extracted fields are the evidence. (This overrides the PRD's "audio reference".) The opening line says the call is transcribed.
+- Calls are **transcribed but not recorded**. No audio is kept by Attentively, Twilio or ElevenLabs. Recording and audio retention must be switched off at every provider, and Phase 0 has to verify this. The transcript plus the extracted fields are the evidence. (This overrides the PRD's "audio reference".) The opening line says the call is transcribed.
 
 **Needs you with no reply**
-- If the user hasn't answered within **~2 business hours**, Ringer **skips the question and continues** with the remaining vendors on the current brief. The unanswered question and its vendor are listed in the report.
+- If the user hasn't answered within **~2 business hours**, Attentively **skips the question and continues** with the remaining vendors on the current brief. The unanswered question and its vendor are listed in the report.
 
 **Alternatives offered by vendors**
 - When a vendor offers a substitute ("no Michelin, but Hankook for $130"), the AI **always records it** as a separate option on the board, clearly labelled **Alternative**. The report ranks alternatives apart from exact matches.
 
 **User-added vendors**
-- The user can add vendors by name or phone number ("also call Dave's Tyres"). Ringer verifies each one (hours, category) and adds it to the plan, marked **user-added**.
+- The user can add vendors by name or phone number ("also call Dave's Tyres"). Attentively verifies each one (hours, category) and adds it to the plan, marked **user-added**.
 
 ---
 
 ## 2. Autonomous invocation (the key new work)
 
-In ChatGPT, the model decides whether to call a tool from the tool's **name, description, input schema and annotations**. Making Ringer fire at the right moments and stay quiet otherwise is a design and testing task in its own right.
+In ChatGPT, the model decides whether to call a tool from the tool's **name, description, input schema and annotations**. Making Attentively fire at the right moments and stay quiet otherwise is a design and testing task in its own right.
 
-### 2.1 Split "should we use Ringer?" from "spend money"
+### 2.1 Split "should we use Attentively?" from "spend money"
 
 Autonomous invocation is only safe if the first call is free and harmless. So:
 
@@ -166,7 +166,7 @@ Autonomous invocation is only safe if the first call is free and harmless. So:
   - `fit`: `strong | possible | poor`, with a reason
   - `category` and the category's answer schema (for tyres: size, load/speed index, brand tier, fitted price, stock, lead time, promo, warranty, validity)
   - `missing_fields`: what must be clarified before planning
-  - `coverage`: whether Ringer operates in the location (Gold Coast only at launch)
+  - `coverage`: whether Attentively operates in the location (Gold Coast only at launch)
   - `prior_observations`: recent vendor-memory hits ("3 quotes for this size in Robina in the last 7 days")
   - `suggested_user_message`: a short line the model can use to offer the service
 - Everything that costs money or contacts a third party (`start_run`, `request_action`) has side effects, needs auth, and **needs an approval token that only a user UI action can create** (§4).
@@ -220,12 +220,12 @@ What this means for the build:
 
 ```
 ┌──────────────── ChatGPT ────────────────┐
-│  Model  ──tools──►  Ringer MCP server   │
-│  Widget iframe (plan / board / results) │──► Ringer API (same backend)
+│  Model  ──tools──►  Attentively MCP server   │
+│  Widget iframe (plan / board / results) │──► Attentively API (same backend)
 └─────────────────────────────────────────┘
                      │
         ┌────────────┴─────────────────────────────────────────┐
-        │                 Ringer core (host-independent)       │
+        │                 Attentively core (host-independent)       │
         │  Run service ─ Orchestrator (durable workflow)       │
         │  Vendor service (canonical IDs, DNC, hours, memory)  │
         │  Extraction/checkpoint LLM                           │
@@ -245,8 +245,8 @@ Key choices:
 - **Durable orchestrator.** Use Temporal, Inngest, or a Postgres-backed job queue. One workflow per run, one activity per call. This gives restart survival, webhook replay safety and sequential execution without inventing them. Pick whichever the team knows. The requirement is durability plus exactly-once dialing.
 - **Idempotent dialing.** Each dial is keyed by `(run_id, vendor_id, attempt_no, brief_version)`. The telephony adapter refuses a second dial with the same key.
 - **Postgres is the system of record.** The existing board tool is a projection, synced asynchronously. A board failure never blocks or loses a call (PRD §14).
-- **Server-side vendor verification, not search.** The user's assistant finds vendors with its own search. Ringer re-checks each one with Google Places before it goes in a plan: business status (closed?), phone, hours and address. Model search results are the most likely place for a closed shop or a wrong number to slip in.
-- **Widgets read Ringer directly.** The board widget polls `get_run` (or subscribes) through the Apps SDK widget bridge, so progress updates without the model taking a turn.
+- **Server-side vendor verification, not search.** The user's assistant finds vendors with its own search. Attentively re-checks each one with Google Places before it goes in a plan: business status (closed?), phone, hours and address. Model search results are the most likely place for a closed shop or a wrong number to slip in.
+- **Widgets read Attentively directly.** The board widget polls `get_run` (or subscribes) through the Apps SDK widget bridge, so progress updates without the model taking a turn.
 
 ### 3.1 Secrets and API keys
 
@@ -271,7 +271,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 |---|---|---|---|
 | `check_local_inquiry` | none (read-only) | optional | Fit check, category schema, missing fields, coverage, prior observations. **The autonomous entry point.** |
 | `plan_run` | creates a draft run and plan version | required | Validates location, spec, **all** found vendors (re-resolved server-side) with the AI's recommended picks marked, the number of calls **the user chose**, questions, ranking rules, and cost estimate. Returns `plan_version` and renders the **Plan card** widget. |
-| `verify_vendors` | Google lookups (cached) | required | Called only after the user agrees to use Ringer. Takes the businesses the assistant found with its own search, drops closed or unknown ones, corrects phone numbers, adds hours and vendor-memory hints. The model then shows the callable ones, recommends some, and asks how many to call. |
+| `verify_vendors` | Google lookups (cached) | required | Called only after the user agrees to use Attentively. Takes the businesses the assistant found with its own search, drops closed or unknown ones, corrects phone numbers, adds hours and vendor-memory hints. The model then shows the callable ones, recommends some, and asks how many to call. |
 | `get_run` | none | required | Full state: vendor items, observations with evidence, open checkpoints, current recommendation inputs. Renders the **Board** or **Results** widget. |
 | `answer_checkpoint` | new brief version | required | Records the user's answer and resumes the run. A material scope change (budget, cap, identity disclosure) returns `needs_reapproval` instead. |
 | `request_action` | prepares an action | required | Round-2 negotiation call-backs, re-run unanswered vendors, CSV/PDF export. Any action that places calls needs its own approval token. (Bookings and holds are out of MVP scope.) |
@@ -281,7 +281,7 @@ Model-facing tools. Everything is scoped to the authenticated user, and every mu
 
 Replaced from the PRD: `place_call`, `get_call`, `wait_for_call` and `save_result` become orchestrator internals (change #3). `approve_run` becomes a **widget-only action**, not a model tool. `vendor_memory` is folded into `check_local_inquiry` and `plan_run`.
 
-**How approval works (as built):** `plan_run` returns a signed **approval link** to a Ringer page showing the full plan. The user presses *Approve* there, and that press both records `approval{user_id, plan_version, method, time}` and starts the run. No model-facing tool can approve or start calls. The runner also re-checks, before every dial, that the vendor's plan version has an approval. A stale link (the plan changed since) is rejected. In Phase 2 the ChatGPT Plan-card widget links to, or embeds, the same approval action.
+**How approval works (as built):** `plan_run` returns a signed **approval link** to a Attentively page showing the full plan. The user presses *Approve* there, and that press both records `approval{user_id, plan_version, method, time}` and starts the run. No model-facing tool can approve or start calls. The runner also re-checks, before every dial, that the vendor's plan version has an approval. A stale link (the plan changed since) is rejected. In Phase 2 the ChatGPT Plan-card widget links to, or embeds, the same approval action.
 
 ---
 
@@ -290,7 +290,7 @@ Replaced from the PRD: `place_call`, `get_call`, `wait_for_call` and `save_resul
 | Moment | Where the user sees it |
 |---|---|
 | Plan | Plan card widget inline in the chat |
-| Calls in progress | Board widget (live-polls Ringer). The user can leave. |
+| Calls in progress | Board widget (live-polls Attentively). The user can leave. |
 | **Needs you** | Email containing the exact question + a link to the run's **Kolaboreyt board**. The answer can come from the board, the widget, or by telling ChatGPT. |
 | Done | Email + Kolaboreyt board link. Back in ChatGPT, "how did it go?" → `get_run` → Results card. |
 | Vendor callback | The vendor calls the user's **dedicated assistant number**. The inbound agent looks up the caller in the database, loads the earlier call's notes and continues the conversation. New info goes on the board and an updated report is emailed, unless the run is Resolved. (Reuses the existing inbound Twilio/ElevenLabs stack.) |
@@ -309,7 +309,7 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 ### Phase 0: Audit and spikes (1–2 weeks)
 - Audit the existing inbound Twilio + ElevenLabs code: can it do **outbound** with a **per-call prompt override** and a **structured data-collection schema**? Record reuse, modify or rebuild for each component.
 - Spike a ChatGPT dev-mode app: a hello-world MCP tool, a widget, OAuth account linking, and a widget → backend call (to validate the approval-token flow in §4).
-- Spike the Kolaboreyt API (once the key and instructions arrive): create a board per run, adaptive columns, item updates, per-run links for emails, and a Resolved status or button that can reach Ringer (webhook or polling).
+- Spike the Kolaboreyt API (once the key and instructions arrive): create a board per run, adaptive columns, item updates, per-run links for emails, and a Resolved status or button that can reach Attentively (webhook or polling).
 - Spike assistant inboxes: per-user inbound email address and SMS on the number, matched to vendor and run.
 - Verify that recording and audio retention can be switched off at Twilio and ElevenLabs while live transcripts are kept.
 - Spike per-user numbers: buy and configure a Twilio number by API, route its inbound calls to the voice agent, and look up the caller before the agent speaks (ElevenLabs conversation-initiation webhook or equivalent).
@@ -341,7 +341,7 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 - **Exit:** testers complete runs without developer intervention, and usefulness is ≥4/5.
 
 ### Phase 4: Public listing and billing
-- Ringer sign-up site: subscription plans with included minutes (Stripe), top-ups, automatic assistant-number setup.
+- Attentively sign-up site: subscription plans with included minutes (Stripe), top-ups, automatic assistant-number setup.
 - App directory submission (privacy policy, safety review, tool annotations accurate), support tooling, formal legal sign-off, retention and deletion controls.
 
 ### Phase 5: Cross-host and next verticals
@@ -378,7 +378,7 @@ Durations assume 2–3 engineers. Treat them as sizing, not commitments.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | **Some categories may break a host's listing policy** (weapons, for example). Ringer itself doesn't restrict categories, but a marketplace can reject or pull an app over them. | Keep one per-host exclusion list in config. Check OpenAI's current app policy in Phase 0. Leave excluded categories out of that host's tool descriptions. Other hosts or the Kolaboreyt entry point can still serve them if their policies allow. |
+| R1 | **Some categories may break a host's listing policy** (weapons, for example). Attentively itself doesn't restrict categories, but a marketplace can reject or pull an app over them. | Keep one per-host exclusion list in config. Check OpenAI's current app policy in Phase 0. Leave excluded categories out of that host's tool descriptions. Other hosts or the Kolaboreyt entry point can still serve them if their policies allow. |
 | R2 | The model over-triggers (annoying) or under-triggers (invisible product) | Eval set (§2.3) gates releases. A read-only entry tool makes over-triggering cheap and harmless. |
 | R3 | The user never comes back to the chat | Email + Kolaboreyt board (§5). Results are never locked inside ChatGPT. |
 | R4 | The model recommends closed businesses, or fabricates or garbles phone numbers | `verify_vendors` checks every vendor against Google (business status, phone, hours) before planning, and the runner re-checks status before dialling (§3). |
@@ -400,8 +400,8 @@ The PRD's other risks (vendor rejection, extraction errors, recording law, cost)
 - ✅ **Number of calls:** the user chooses for each run. The AI lists every vendor it found, recommends the ones it would definitely call (with phone numbers and reasons), and asks how many to call (§2.4). A config safety ceiling still applies.
 - ✅ **Notifications:** email, linking to the run's Kolaboreyt board.
 - ✅ **Categories:** not restricted by product choice. Tyres, guns and tools were examples. Exclusions come only from host policy (R1).
-- ✅ Assistant number per user, AI answers all inbound, negotiation rules, report plus next step, queue-until-open, Resolved button, minutes billing, sign-up on Ringer's site, voice, first user: see §1.1.
-- ✅ **Kolaboreyt** is the team's existing monday.com-style board tool. Ringer owns the workspace and users get share links.
+- ✅ Assistant number per user, AI answers all inbound, negotiation rules, report plus next step, queue-until-open, Resolved button, minutes billing, sign-up on Attentively's site, voice, first user: see §1.1.
+- ✅ **Kolaboreyt** is the team's existing monday.com-style board tool. Attentively owns the workspace and users get share links.
 - ✅ Opt-in anonymised dated data sharing, transcripts only, hidden assistant number, assistant email and SMS, skip Needs-you after ~2 business hours, record alternatives, user-added vendors: see §1.1.
 
 **Still open**
@@ -421,5 +421,5 @@ The PRD's other risks (vendor rejection, extraction errors, recording law, cost)
 1. Get the Kolaboreyt API key and instructions (key goes into env secrets).
 2. Give engineering access to the existing inbound Twilio/ElevenLabs code and the board-tool API docs.
 3. Start the Phase 0 spikes in parallel: outbound call with prompt override, ChatGPT dev-mode widget + OAuth, board API.
-4. Draft the invocation eval prompts. Anyone on the team can write these, and it's the fastest way to sharpen *when* Ringer should appear.
+4. Draft the invocation eval prompts. Anyone on the team can write these, and it's the fastest way to sharpen *when* Attentively should appear.
 5. Book the legal consult (Queensland recording, AI disclosure, DNC applicability, platform policy for restricted goods).

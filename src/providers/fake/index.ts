@@ -125,7 +125,7 @@ export class MemoryMailer implements Mailer {
 }
 
 /**
- * Local board: Ringer itself serves the board page (see http/pages.ts), so email
+ * Local board: Attentively itself serves the board page (see http/pages.ts), so email
  * links work before Kolaboreyt is connected. Items are kept for inspection.
  */
 export class LocalBoard implements BoardProvider {

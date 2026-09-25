@@ -33,7 +33,7 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
       places: new FakePlaces(),
       extractor: new FakeExtractor(),
       mailer,
-      board: new LocalBoard((id) => `${cfg.RINGER_BASE_URL}/runs/${id}`),
+      board: new LocalBoard((id) => `${cfg.ATTENTIVELY_BASE_URL}/runs/${id}`),
     },
     now: () => clock,
     log: opts.quiet ? () => {} : (m, d) => console.log(`   · ${m}`, d ?? ""),
@@ -49,7 +49,7 @@ export async function simulate(opts: { quiet?: boolean } = {}) {
 
   const location = { text: "Robina, Gold Coast QLD", confirmed: true };
   log("ChatGPT searches the web itself (user's subscription) and finds 8 shops. User: \"yes, ring around\"");
-  log("verify_vendors: Ringer checks each shop with Google (only now, after the user agreed)");
+  log("verify_vendors: Attentively checks each shop with Google (only now, after the user agreed)");
   const found = await verifyVendors(ctx, user.id, { category: "tyres", location, candidates: ASSISTANT_SEARCH_RESULTS });
   if (!opts.quiet) {
     for (const v of found.callable) console.log(`   ✓ ${v.name} ${v.phone}${v.phone_corrected ? " (number corrected)" : ""}`);

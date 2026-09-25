@@ -21,7 +21,7 @@ async function start() {
   db = t.db;
   server = buildApp(t.ctx).listen(0);
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  t.ctx.cfg.RINGER_BASE_URL = base;
+  t.ctx.cfg.ATTENTIVELY_BASE_URL = base;
   return { ...t, base };
 }
 
@@ -47,7 +47,7 @@ describe("MCP endpoint", () => {
       expect.arrayContaining(["check_local_inquiry", "verify_vendors", "plan_run", "get_run", "answer_checkpoint", "request_action", "resolve_run", "stop_run"]),
     );
     expect(names).not.toContain("approve_run");
-    expect(names).not.toContain("find_vendors"); // Ringer never searches; the user's assistant does
+    expect(names).not.toContain("find_vendors"); // Attentively never searches; the user's assistant does
     const check = out.result.tools.find((t: any) => t.name === "check_local_inquiry");
     expect(check.annotations.readOnlyHint).toBe(true);
     expect(check.description).toMatch(/BEFORE telling the user to "call around"/);
@@ -70,7 +70,7 @@ describe("MCP endpoint", () => {
       params: { name: "verify_vendors", arguments: { category: "tyres", location: { text: "Robina", confirmed: true }, candidates: [{ name: "Robina Tyre & Auto" }] } },
     });
     expect(find.result.isError).toBe(true);
-    expect(find.result.content[0].text).toMatch(/Connect Ringer/);
+    expect(find.result.content[0].text).toMatch(/Connect Attentively/);
   });
 
   it("verify_vendors refuses an unconfirmed location", async () => {

@@ -1,4 +1,4 @@
--- Ringer system of record. Kolaboreyt boards are a projection of this data.
+-- Attentively system of record. Kolaboreyt boards are a projection of this data.
 
 CREATE TABLE IF NOT EXISTS users (
   id                       TEXT PRIMARY KEY,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS run_vendors (
   vendor_id     TEXT NOT NULL REFERENCES vendors(id),
   position      INTEGER NOT NULL,
   status        TEXT NOT NULL,
-  source        TEXT NOT NULL,          -- 'ringer' | 'user_added'
+  source        TEXT NOT NULL,          -- 'attentively' | 'user_added'
   recommended   BOOLEAN NOT NULL DEFAULT FALSE,
   reason        TEXT,
   selected      BOOLEAN NOT NULL DEFAULT TRUE,

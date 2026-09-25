@@ -9,7 +9,7 @@ import {
   RunStatus,
   VendorItemStatus,
   type Offer,
-  RingerError,
+  AttentivelyError,
 } from "./types.js";
 
 /* ---------- row types ---------- */
@@ -70,7 +70,7 @@ export interface RunVendorRow {
   vendor_id: string;
   position: number;
   status: VendorItemStatus;
-  source: "ringer" | "user_added";
+  source: "attentively" | "user_added";
   recommended: boolean;
   reason: string | null;
   selected: boolean;
@@ -170,7 +170,7 @@ export async function createUser(
   u: { email: string; display_name?: string; minutes_seconds?: number; share_data_opt_in?: boolean },
 ): Promise<{ user: UserRow; apiToken: string }> {
   const id = newId("usr");
-  const apiToken = `rg_${randomBytes(24).toString("base64url")}`;
+  const apiToken = `at_${randomBytes(24).toString("base64url")}`;
   await db.query(
     `INSERT INTO users (id, email, display_name, api_token_hash, minutes_balance_seconds, share_data_opt_in)
      VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -430,7 +430,7 @@ export async function getBrief(db: Db, runId: string): Promise<{ version: number
       [runId],
     )
   )[0];
-  if (!row) throw new RingerError("no_brief", `Run ${runId} has no brief`);
+  if (!row) throw new AttentivelyError("no_brief", `Run ${runId} has no brief`);
   return row;
 }
 
@@ -440,7 +440,7 @@ export async function getRun(db: Db, id: string): Promise<RunRow | null> {
 
 export async function getRunForUser(db: Db, id: string, userId: string): Promise<RunRow> {
   const run = await getRun(db, id);
-  if (!run || run.user_id !== userId) throw new RingerError("not_found", "Run not found");
+  if (!run || run.user_id !== userId) throw new AttentivelyError("not_found", "Run not found");
   return run;
 }
 

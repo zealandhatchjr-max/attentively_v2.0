@@ -16,8 +16,8 @@ export function buildProviders(cfg: Config): Providers {
         ? new TwilioNumbers(cfg.TWILIO_ACCOUNT_SID!, cfg.TWILIO_AUTH_TOKEN!, cfg.ELEVENLABS_API_KEY!, {
             bundleSid: cfg.TWILIO_AU_BUNDLE_SID,
             addressSid: cfg.TWILIO_AU_ADDRESS_SID,
-            smsWebhookUrl: `${cfg.RINGER_BASE_URL}/webhooks/sms`,
-            label: (userId) => `ringer-${userId}`,
+            smsWebhookUrl: `${cfg.ATTENTIVELY_BASE_URL}/webhooks/sms`,
+            label: (userId) => `attentively-${userId}`,
           })
         : new FakeNumbers(),
     places: cfg.PLACES_PROVIDER === "google" ? new GooglePlaces(cfg.PLACES_API_KEY!) : new FakePlaces(),
@@ -26,6 +26,6 @@ export function buildProviders(cfg: Config): Providers {
     board:
       cfg.BOARD_PROVIDER === "kolaboreyt"
         ? new KolaboreytBoard(cfg.KOLABOREYT_API_KEY!, cfg.KOLABOREYT_BASE_URL!)
-        : new LocalBoard((runId) => `${cfg.RINGER_BASE_URL}/runs/${runId}`),
+        : new LocalBoard((runId) => `${cfg.ATTENTIVELY_BASE_URL}/runs/${runId}`),
   };
 }

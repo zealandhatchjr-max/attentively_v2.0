@@ -104,7 +104,7 @@ export function renderReportText(report: Report, links: { board: string }, updat
   const r = report.ranking;
   const best = r.best_overall ?? r.cheapest_valid;
   const subject =
-    (updated ? "Updated report: " : "Ringer report: ") +
+    (updated ? "Updated report: " : "Attentively report: ") +
     (best ? `best ${money(best.offer.total_price)} at ${best.vendor_name}` : "no comparable quotes yet");
   const out: string[] = [];
   if (updated) out.push("A vendor got back to us after your report went out, so here's the updated picture.\n");

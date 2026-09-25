@@ -102,7 +102,7 @@ async function step(ctx: Ctx, runId: string): Promise<boolean> {
     await store.setRunStatus(db, runId, RunStatus.PausedMinutes, { pause_reason: "out_of_minutes" });
     await ctx.providers.mailer.send({
       to: run.request.notify_email,
-      subject: "Ringer paused: out of minutes",
+      subject: "Attentively paused: out of minutes",
       text:
         `Your assistant has run out of call minutes partway through "${run.request.need.item}".\n\n` +
         `Top up to carry on calling the remaining ${queued.length} vendor(s), or get the report with what we have so far.\n\n` +
@@ -345,7 +345,7 @@ export async function processOutboundCall(ctx: Ctx, runId: string, callId: strin
     }
     await ctx.providers.mailer.send({
       to: run.request.notify_email,
-      subject: `Ringer needs you: ${extraction.out_of_brief_questions[0].question}`,
+      subject: `Attentively needs you: ${extraction.out_of_brief_questions[0].question}`,
       text:
         `${vendor.name} asked something we can't answer without you:\n\n` +
         extraction.out_of_brief_questions.map((q) => `  • ${q.question}\n    (${q.why_outside})`).join("\n") +

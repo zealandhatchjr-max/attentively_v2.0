@@ -2,7 +2,7 @@ import type { Extraction, OpeningHours, Offer, TranscriptTurn } from "../core/ty
 
 /**
  * Internal provider interfaces. Swapping a provider never changes the external
- * Ringer tool contract.
+ * Attentively tool contract.
  */
 
 export interface OutboundCallRequest {
@@ -51,9 +51,9 @@ export interface PlaceResult {
 }
 
 /**
- * Verification only. Ringer never searches for vendors itself: the user's own
+ * Verification only. Attentively never searches for vendors itself: the user's own
  * assistant (ChatGPT, Claude, ...) finds them under the user's subscription, and
- * Ringer checks them here only after the user has agreed to use Ringer.
+ * Attentively checks them here only after the user has agreed to use Attentively.
  */
 export interface PlacesProvider {
   /** Best match for a business the assistant found, e.g. "Robina Tyre & Auto, Robina QLD". */

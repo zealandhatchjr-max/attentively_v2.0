@@ -167,7 +167,7 @@ export function buildApp(ctx: Ctx) {
 
   app.post("/webhooks/email", async (req, res) => {
     const secret = ctx.cfg.INBOUND_EMAIL_WEBHOOK_SECRET;
-    if (secret && req.headers["x-ringer-secret"] !== secret) return void res.status(401).end();
+    if (secret && req.headers["x-attentively-secret"] !== secret) return void res.status(401).end();
     if (!secret && ctx.cfg.NODE_ENV === "production") return void res.status(503).end();
     const b = req.body ?? {};
     await inboundMessage(ctx, { channel: "email", to: String(b.to ?? ""), from: String(b.from ?? ""), subject: b.subject, body: String(b.text ?? b.body ?? "") });
@@ -183,7 +183,7 @@ function twilioSignatureOk(ctx: Ctx, req: Request): boolean {
   if (!token) return ctx.cfg.NODE_ENV !== "production";
   const sig = req.headers["x-twilio-signature"];
   if (typeof sig !== "string") return false;
-  const url = `${ctx.cfg.RINGER_BASE_URL}${req.originalUrl}`;
+  const url = `${ctx.cfg.ATTENTIVELY_BASE_URL}${req.originalUrl}`;
   const params = req.body as Record<string, string>;
   const data = Object.keys(params)
     .sort()

@@ -115,5 +115,5 @@ ${v.calls
   .join("")}
 ${d.resolved ? "" : `<form method="post" action="${esc(d.resolveUrl)}"><p><button class="secondary" type="submit">Resolved: stop following this up</button></p></form>`}
 <p class="muted">Transcripts only; no audio is recorded.</p>`;
-  return layout("Ringer board", body);
+  return layout("Attentively board", body);
 }

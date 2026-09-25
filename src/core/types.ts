@@ -63,7 +63,7 @@ export interface PlanVendor {
   phone: string;
   recommended: boolean;
   reason?: string;
-  source: "ringer" | "user_added";
+  source: "attentively" | "user_added";
   selected: boolean;
 }
 
@@ -124,7 +124,7 @@ export function newId(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString("base64url")}`;
 }
 
-export class RingerError extends Error {
+export class AttentivelyError extends Error {
   constructor(
     public code: string,
     message: string,
